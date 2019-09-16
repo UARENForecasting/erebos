@@ -1,0 +1,2 @@
+include versioneer.py
+include erebos/_version.py
