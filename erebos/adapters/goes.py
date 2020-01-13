@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 
 
@@ -51,20 +51,20 @@ def assign_latlon(goes_file):
 def add_projection(ds):
     proj_info = ds.goes_imager_projection
     globe = ccrs.Globe(
-        semimajor_axis=proj_info.semi_major_axis,
-        semiminor_axis=proj_info.semi_minor_axis,
-        inverse_flattening=proj_info.inverse_flattening,
+        semimajor_axis=proj_info.semi_major_axis.item(),
+        semiminor_axis=proj_info.semi_minor_axis.item(),
+        inverse_flattening=proj_info.inverse_flattening.item(),
     )
     crs = ccrs.Geostationary(
         globe=globe,
-        satellite_height=proj_info.perspective_point_height,
-        central_longitude=proj_info.longitude_of_projection_origin,
+        satellite_height=proj_info.perspective_point_height.item(),
+        central_longitude=proj_info.longitude_of_projection_origin.item(),
         sweep_axis=proj_info.sweep_angle_axis,
     )
     return ds.assign_coords(crs=crs).update(
         {
-            "x": ds.x * proj_info.perspective_point_height,
-            "y": ds.y * proj_info.perspective_point_height,
+            "x": ds.x * proj_info.perspective_point_height.item(),
+            "y": ds.y * proj_info.perspective_point_height.item(),
         }
     )
 
@@ -72,8 +72,8 @@ def add_projection(ds):
 def add_spacecraft_location(ds):
     rep = RotatedECRPosition.from_geodetic(
         0,
-        ds.goes_imager_projection.longitude_of_projection_origin,
-        ds.goes_imager_projection.perspective_point_height,
+        ds.goes_imager_projection.longitude_of_projection_origin.item(),
+        ds.goes_imager_projection.perspective_point_height.item(),
     )
     loc = xr.DataArray(np.array(rep)[:, None], dims=("ECR axis", "locations"))
     return ds.assign_coords(spacecraft_location=loc)
@@ -100,12 +100,14 @@ class GOESFilename:
     end: pd.Timestamp = None
     creation: pd.Timestamp = None
 
-    def __post_init__(self):
-        if not isinstance(self.filename, Path):
-            object.__setattr__(self, "filename", Path(self.filename))
-        split = self.filename.name.split("-")
+    @classmethod
+    def from_path(cls, filename):
+        if not isinstance(filename, Path):
+            filename = Path(filename)
+        new = {"filename": filename}
+        split = filename.name.split("-")
         nextsplit = split[-1].split("_")
-        object.__setattr__(self, "processing_level", split[1])
+        new["processing_level"] = split[1]
         sector = split[2][-1]
         try:
             int(sector)
@@ -114,28 +116,38 @@ class GOESFilename:
         else:
             sector = split[2][-2:]
             product = split[2][:-2]
-        object.__setattr__(self, "product", product)
-        object.__setattr__(self, "sector", sector)
-        object.__setattr__(self, "scan_mode", nextsplit[0][:2])
+        new["product"] = product
+        new["sector"] = sector
+        new["scan_mode"] = nextsplit[0][:2]
         try:
             channel = int(nextsplit[0][-2:])
         except ValueError:
             channel = 0
-        object.__setattr__(self, "channel", channel)
-        object.__setattr__(self, "satellite", nextsplit[1])
-        timefmt = "%Y%j%H%M%S"
-        object.__setattr__(
-            self,
-            "start",
-            pd.to_datetime(nextsplit[2][1:-1], format=timefmt).tz_localize("UTC"),
+        new["channel"] = channel
+        new["satellite"] = nextsplit[1]
+        timefmt = "%Y%j%H%M%S%f"
+        new["start"] = pd.to_datetime(nextsplit[2][1:], format=timefmt).tz_localize(
+            "UTC"
         )
-        object.__setattr__(
-            self,
-            "end",
-            pd.to_datetime(nextsplit[3][1:-1], format=timefmt).tz_localize("UTC"),
+        new["end"] = pd.to_datetime(nextsplit[3][1:], format=timefmt).tz_localize("UTC")
+        new["creation"] = pd.to_datetime(
+            nextsplit[4][1:-3], format=timefmt
+        ).tz_localize("UTC")
+        return cls(**new)
+
+    def to_path(self, *, glob_ready=False, **kwargs):
+        dict_ = asdict(self)
+        dict_.update(kwargs)
+        for key in ("start", "end", "creation"):
+            dict_[key] = dict_[key].strftime("%Y%j%H%M%S%f")[:-5]
+        base = ("OR_ABI-{processing_level}-{product}{sector}-{scan_mode}").format(
+            **dict_
         )
-        object.__setattr__(
-            self,
-            "creation",
-            pd.to_datetime(nextsplit[4][1:-4], format=timefmt).tz_localize("UTC"),
-        )
+        if dict_.get("channel", 0):
+            base += "C{channel:02d}".format(**dict_)
+        base += "_{satellite}_s{start}_".format(**dict_)
+        if glob_ready:
+            out = base[:-2] + "*.nc"
+        else:
+            out = base + "e{end}_c{creation}.nc".format(**dict_)
+        return Path(out)

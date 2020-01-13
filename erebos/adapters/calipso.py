@@ -26,7 +26,7 @@ def add_proper_time(ds):
         - np.array(dt.timedelta(seconds=10), dtype="timedelta64[ns]")
     )
     time_arr.name = "time"
-    mt = time_arr.min() + (time_arr.max() - time_arr.min())
+    mt = time_arr.min() + (time_arr.max() - time_arr.min()) / 2
     return ds.assign({"time": time_arr}).assign_attrs(mean_time=mt.values)
 
 
