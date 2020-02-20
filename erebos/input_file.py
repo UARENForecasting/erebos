@@ -15,6 +15,10 @@ from erebos.adapters.goes import GOESFilename
 
 
 def generate_single_chan_prefixes(mcmip_file, bucket):
+    """
+    From a CMIP or MCMIP filename, find the s3 keys for the
+    16 indv. channels made at the same time in bucket
+    """
     fn = GOESFilename.from_path(mcmip_file)
     s3 = boto3.client("s3")
 
@@ -28,14 +32,19 @@ def generate_single_chan_prefixes(mcmip_file, bucket):
 
 
 def _download(bucket, key, path):
-    logging.info("Downloading %s", key)
+    logging.debug("Downloading %s", key)
     s3 = boto3.resource("s3")
     s3.Object(bucket, key).download_file(str(path))
-    logging.info("Done with %s", key)
+    logging.debug("Done with %s", key)
 
 
 def download_files(mcmip_file, bucket, tmpdir):
+    """
+    Download all 16 CMIP channels (using mcmip_file as a template)
+    from bucket into tmpdir
+    """
     out = {}
+    logging.info("Downloading files...")
     with ThreadPoolExecutor(max_workers=4) as exc:
         futs = []
         for chan, key in generate_single_chan_prefixes(mcmip_file, bucket):
@@ -43,13 +52,16 @@ def download_files(mcmip_file, bucket, tmpdir):
             futs.append(exc.submit(_download, bucket, key, path))
             out[chan] = path
         wait(futs)
+    logging.info("Done downloading")
     return out
 
 
 def prep_first_file(ds, chan):
+    """
+    Take the dataset for chan and drop spurious variables and
+    rename the main variables
+    """
     drop_vars = (
-        # "algorithm_dynamic_input_data_container",
-        # "algorithm_product_version_container",
         "band_id",
         "band_wavelength",
         "esun",
@@ -92,6 +104,11 @@ def prep_first_file(ds, chan):
 
 
 def add_primary_variables(ds, other, base_chan):
+    """
+    For other channels, add the main data to ds at the same resolution.
+    For channels that have a higher resolution, subsample the lower left point.
+    For channels that have a lower resolution, copy the value to mulitple cells.
+    """
     cband = f"C{other.band_id.item():02d}"
     nvar = other.CMI
     ndqf = other.DQF
@@ -130,6 +147,10 @@ def add_primary_variables(ds, other, base_chan):
 
 
 def generate_combined_file(mcmip_file, final_path, bucket="noaa-goes16", base_chan=1):
+    """
+    Make one netCDF file like MCMIP with the resolution of base_chan from the
+    specified bucket and save to final_path
+    """
     logging.info("Generating combined file based on %s", mcmip_file)
     tmpdir = tempfile.TemporaryDirectory()
     paths = download_files(mcmip_file, bucket, Path(tmpdir.name))
@@ -148,10 +169,4 @@ def generate_combined_file(mcmip_file, final_path, bucket="noaa-goes16", base_ch
         out.to_netcdf(final_path, engine="h5netcdf")
     out.close()
     tmpdir.cleanup()
-    logging.info("Done")
-
-
-if __name__ == "__main__":
-    logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level="INFO")
-    mf = "OR_ABI-L2-MCMIPC-M6_G16_s20200492041164_e20200492043543_c20200492044096.nc"
-    generate_combined_file(mf, "combo.nc")
+    logging.info("Done saving file")
