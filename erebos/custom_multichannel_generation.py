@@ -164,7 +164,9 @@ def make_out_path(mcmip_file, out_dir):
     ftime = fn.start + (fn.end - fn.start) / 2
     dir_ = Path(out_dir) / ftime.strftime("%Y/%m/%d")
     dir_.mkdir(parents=True, exist_ok=True)
-    return dir_ / ftime.strftime(f"custom_{fn.product}{fn.sector}_%Y%m%dT%H%M%SZ.nc")
+    return dir_ / ftime.strftime(
+        f"erebos_{fn.product}{fn.sector}_{fn.satellite}_%Y%m%dT%H%M%SZ.nc"
+    )
 
 
 def generate_combined_file(
