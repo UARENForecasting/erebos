@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 import versioneer
 
 
@@ -8,7 +8,7 @@ setup(
     author="Antonio Lorenzo",
     author_email="atlorenzo@email.arizona.edu",
     license="MIT",
-    packages=["erebos"],
+    packages=find_packages(),
     zip_safe=True,
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
