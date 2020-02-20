@@ -17,9 +17,6 @@ from erebos import __version__
 from erebos.adapters.goes import GOESFilename
 
 
-S3_PREFIX = "ABI-L2-MCMIPC"
-
-
 def generate_single_chan_prefixes(mcmip_file, bucket):
     """
     From a CMIP or MCMIP filename, find the s3 keys for the
@@ -99,7 +96,6 @@ def prep_first_file(ds, chan):
         "processing_level",
         "date_created",
     )
-    logging.info("Prepping first file %s", ds.dataset_name)
     out = ds.rename({"CMI": f"CMI_C{chan:02d}", "DQF": f"DQF_CMI_C{chan:02d}"})
     out.attrs["timezone"] = "UTC"
     out.attrs["datasets"] = (ds.dataset_name,)
@@ -167,12 +163,12 @@ def generate_combined_file(mcmip_file, out_dir, bucket="noaa-goes16", base_chan=
     logging.info("Generating combined file based on %s", mcmip_file)
     tmpdir = tempfile.TemporaryDirectory()
     paths = download_files(mcmip_file, bucket, Path(tmpdir.name))
-    logging.info("Prepping file based on channel %s", base_chan)
+    logging.debug("Prepping file based on channel %s", base_chan)
     with xr.open_dataset(paths.pop(base_chan), engine="h5netcdf") as ds:
         out = prep_first_file(ds, base_chan)
 
     for chan, path in paths.items():
-        logging.info("Adding data from channel %s", chan)
+        logging.debug("Adding data from channel %s", chan)
         with xr.open_dataset(path, engine="h5netcdf") as nextds:
             out = add_primary_variables(out, nextds, base_chan)
     out.attrs["erebos_version"] = __version__
@@ -183,7 +179,7 @@ def generate_combined_file(mcmip_file, out_dir, bucket="noaa-goes16", base_chan=
         out.to_netcdf(final_path, engine="h5netcdf")
     out.close()
     tmpdir.cleanup()
-    logging.info("Done saving file")
+    logging.debug("Done saving file")
 
 
 def _update_visibility(message, timeout, local):
@@ -192,7 +188,7 @@ def _update_visibility(message, timeout, local):
         time.sleep(timeout / 2)
 
 
-def get_sqs_keys(sqs_url):
+def get_sqs_keys(sqs_url, s3_prefix):
     sqs = boto3.resource("sqs")
     q = sqs.Queue(sqs_url)
     messages = q.receive_messages(MaxNumberOfMessages=10)
@@ -209,7 +205,7 @@ def get_sqs_keys(sqs_url):
                 for record in rec["Records"]:
                     bucket = record["s3"]["bucket"]["name"]
                     key = record["s3"]["object"]["key"]
-                    if key.startswith(S3_PREFIX):
+                    if key.startswith(s3_prefix):
                         yield (bucket, key)
                 data.stop = True
                 logging.debug("stopping message visibility update")
@@ -219,7 +215,6 @@ def get_sqs_keys(sqs_url):
         messages = q.receive_messages(MaxNumberOfMessages=10)
 
 
-def get_process_and_save(sqs_url, out_dir):
-    for bucket, key in get_sqs_keys(sqs_url):
-        logging.info("Processing file from %s: %s", bucket, key)
+def get_process_and_save(sqs_url, out_dir, s3_prefix="ABI-L2-MCMIPC"):
+    for bucket, key in get_sqs_keys(sqs_url, s3_prefix):
         generate_combined_file(key, out_dir, bucket)

@@ -140,16 +140,24 @@ class PathParamType(click.Path):
 @verbose
 @schedule_options
 @set_log_level
+@click.option("--s3-prefix", default="ABI-L2-MCMIPC")
 @click.argument("sqs_url")
 @click.argument(
     "save_directory",
     type=PathParamType(exists=True, writable=True, resolve_path=True, file_okay=False),
 )
-def process_files(sqs_url, save_directory, cron, cron_tz):
+def create_multichannel_files(sqs_url, save_directory, s3_prefix, cron, cron_tz):
     """
     Process new files in SQS_URL and save the high-res combined NetCDF
     to SAVE_DIRECTORY
     """
-    from erebos.input_file import get_process_and_save
+    from erebos.custom_multichannel_generation import get_process_and_save
 
-    run_loop(get_process_and_save, sqs_url, save_directory, cron=cron, cron_tz=cron_tz)
+    run_loop(
+        get_process_and_save,
+        sqs_url,
+        save_directory,
+        s3_prefix,
+        cron=cron,
+        cron_tz=cron_tz,
+    )
