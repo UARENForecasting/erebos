@@ -16,4 +16,4 @@ RUN TEMPPKG='gcc g++' \
     && apt clean \
     && rm -rf /var/lib/apt/lists/*
 
-CMD /opt/app-root/bin/erebos
+CMD ["/opt/app-root/bin/erebos"]
