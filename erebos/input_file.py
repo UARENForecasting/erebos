@@ -1,9 +1,11 @@
+from concurrent.futures import ThreadPoolExecutor, wait
 import logging
+from pathlib import Path
 import warnings
+import tempfile
 
 
 import boto3
-import s3fs
 from scipy.ndimage import zoom
 import xarray as xr
 
@@ -16,33 +18,45 @@ def generate_single_chan_prefixes(mcmip_file, bucket):
     fn = GOESFilename.from_path(mcmip_file)
     s3 = boto3.client("s3")
 
-    out = {}
     for chan in range(1, 17):
         prefix = fn.to_s3_prefix(channel=chan, product="CMIP")
         resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
         if resp["KeyCount"] == 0:
-            raise ValueError(f"No keys with prefix {prefix}")
+            raise KeyError(f"No keys with prefix {prefix}")
         key = resp["Contents"][0]["Key"]
-        out[chan] = key
+        yield chan, key
+
+
+def _download(bucket, key, path):
+    logging.info("Downloading %s", key)
+    s3 = boto3.resource("s3")
+    s3.Object(bucket, key).download_file(str(path))
+    logging.info("Done with %s", key)
+
+
+def download_files(mcmip_file, bucket, tmpdir):
+    out = {}
+    with ThreadPoolExecutor(max_workers=4) as exc:
+        futs = []
+        for chan, key in generate_single_chan_prefixes(mcmip_file, bucket):
+            path = tmpdir / f"{chan}.nc"
+            futs.append(exc.submit(_download, bucket, key, path))
+            out[chan] = path
+        wait(futs)
     return out
 
 
 def prep_first_file(ds, chan):
     drop_vars = (
-        "algorithm_dynamic_input_data_container",
-        "algorithm_product_version_container",
+        # "algorithm_dynamic_input_data_container",
+        # "algorithm_product_version_container",
         "band_id",
         "band_wavelength",
-        "earth_sun_distance_anomaly_in_AU",
         "esun",
         "kappa0",
         "max_reflectance_factor",
         "mean_reflectance_factor",
         "min_reflectance_factor",
-        "nominal_satellite_subpoint_lat",
-        "nominal_satellite_subpoint_lon",
-        "nominal_satellite_height",
-        "geospatial_lat_lon_extent",
         "outlier_pixel_count",
         "percent_uncorrectable_GRB_errors",
         "percent_uncorrectable_L0_errors",
@@ -50,7 +64,6 @@ def prep_first_file(ds, chan):
         "planck_bc2",
         "planck_fk1",
         "planck_fk2",
-        "processing_parm_version_container",
         "std_dev_reflectance_factor",
         "total_number_of_points",
         "valid_pixel_count",
@@ -65,8 +78,6 @@ def prep_first_file(ds, chan):
         "dataset_name",
         "title",
         "summary",
-        "keywords",
-        "keywords_vocabulary",
         "processing_level",
         "date_created",
     )
@@ -120,28 +131,27 @@ def add_primary_variables(ds, other, base_chan):
 
 def generate_combined_file(mcmip_file, final_path, bucket="noaa-goes16", base_chan=1):
     logging.info("Generating combined file based on %s", mcmip_file)
-    s3_keys = generate_single_chan_prefixes(mcmip_file, bucket)
-    fs = s3fs.S3FileSystem(anon=True)
+    tmpdir = tempfile.TemporaryDirectory()
+    paths = download_files(mcmip_file, bucket, Path(tmpdir.name))
     logging.info("Prepping file based on channel %s", base_chan)
-    with fs.open(bucket + "/" + s3_keys.pop(base_chan)) as f:
-        with xr.open_dataset(f, engine="h5netcdf") as ds:
-            out = prep_first_file(ds, base_chan)
+    with xr.open_dataset(paths.pop(base_chan), engine="h5netcdf") as ds:
+        out = prep_first_file(ds, base_chan)
 
-    for chan, s3key in s3_keys.items():
+    for chan, path in paths.items():
         logging.info("Adding data from channel %s", chan)
-        with fs.open(bucket + "/" + s3key) as f:
-            with xr.open_dataset(f, engine="h5netcdf") as nextds:
-                out = add_primary_variables(out, nextds, base_chan)
+        with xr.open_dataset(path, engine="h5netcdf") as nextds:
+            out = add_primary_variables(out, nextds, base_chan)
     out.attrs["erebos_version"] = __version__
     logging.info("Saving file to %s", final_path)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         out.to_netcdf(final_path, engine="h5netcdf")
     out.close()
+    tmpdir.cleanup()
     logging.info("Done")
 
 
 if __name__ == "__main__":
     logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level="INFO")
-    mf = "OR_ABI-L2-MCMIPC-M6_G16_s20200502101161_e20200502103541_c20200502104096.nc"
+    mf = "OR_ABI-L2-MCMIPC-M6_G16_s20200492041164_e20200492043543_c20200492044096.nc"
     generate_combined_file(mf, "combo.nc")
