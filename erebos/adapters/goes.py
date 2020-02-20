@@ -135,7 +135,7 @@ class GOESFilename:
         ).tz_localize("UTC")
         return cls(**new)
 
-    def to_path(self, *, glob_ready=False, **kwargs):
+    def _base_out(self, **kwargs):
         dict_ = asdict(self)
         dict_.update(kwargs)
         for key in ("start", "end", "creation"):
@@ -146,8 +146,20 @@ class GOESFilename:
         if dict_.get("channel", 0):
             base += "C{channel:02d}".format(**dict_)
         base += "_{satellite}_s{start}_".format(**dict_)
+        return base, dict_
+
+    def to_path(self, *, glob_ready=False, **kwargs):
+        base, dict_ = self._base_out(**kwargs)
         if glob_ready:
             out = base[:-2] + "*.nc"
         else:
             out = base + "e{end}_c{creation}.nc".format(**dict_)
         return Path(out)
+
+    def to_s3_prefix(self, **kwargs):
+        base, dict_ = self._base_out(**kwargs)
+        start = kwargs.get("start", self.start)
+        prefix = "ABI-{processing_level}-{product}{sector}/".format(**dict_)
+        prefix += start.strftime("%Y/%j/%H/")
+        prefix += base
+        return prefix
