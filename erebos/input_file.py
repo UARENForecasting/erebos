@@ -1,8 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor, wait
+import json
 import logging
 from pathlib import Path
 import warnings
 import tempfile
+import time
+import threading
 
 
 import boto3
@@ -12,6 +15,9 @@ import xarray as xr
 
 from erebos import __version__
 from erebos.adapters.goes import GOESFilename
+
+
+S3_PREFIX = "ABI-L2-MCMIPC"
 
 
 def generate_single_chan_prefixes(mcmip_file, bucket):
@@ -146,10 +152,17 @@ def add_primary_variables(ds, other, base_chan):
     return out.load()
 
 
-def generate_combined_file(mcmip_file, final_path, bucket="noaa-goes16", base_chan=1):
+def make_out_path(mcmip_file, out_dir):
+    fn = GOESFilename.from_path(mcmip_file)
+    dir_ = Path(out_dir) / fn.start.strftime("%Y/%m/%d")
+    dir_.mkdir(parents=True, exist_ok=True)
+    return dir_ / fn.start.strftime("%Y%m%dT%H%M_combined.nc")
+
+
+def generate_combined_file(mcmip_file, out_dir, bucket="noaa-goes16", base_chan=1):
     """
     Make one netCDF file like MCMIP with the resolution of base_chan from the
-    specified bucket and save to final_path
+    specified bucket and save to out_dir
     """
     logging.info("Generating combined file based on %s", mcmip_file)
     tmpdir = tempfile.TemporaryDirectory()
@@ -163,6 +176,7 @@ def generate_combined_file(mcmip_file, final_path, bucket="noaa-goes16", base_ch
         with xr.open_dataset(path, engine="h5netcdf") as nextds:
             out = add_primary_variables(out, nextds, base_chan)
     out.attrs["erebos_version"] = __version__
+    final_path = make_out_path(mcmip_file, out_dir)
     logging.info("Saving file to %s", final_path)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -170,3 +184,42 @@ def generate_combined_file(mcmip_file, final_path, bucket="noaa-goes16", base_ch
     out.close()
     tmpdir.cleanup()
     logging.info("Done saving file")
+
+
+def _update_visibility(message, timeout, local):
+    while not local.stop:
+        message.change_visibility(VisibilityTimeout=timeout)
+        time.sleep(timeout / 2)
+
+
+def get_sqs_keys(sqs_url):
+    sqs = boto3.resource("sqs")
+    q = sqs.Queue(sqs_url)
+    messages = q.receive_messages(MaxNumberOfMessages=10)
+    while len(messages) > 0:
+        for message in messages:
+            # continuously update message visibility until processing
+            # is complete
+            with ThreadPoolExecutor() as exc:
+                data = threading.local()
+                data.stop = False
+                fut = exc.submit(_update_visibility, message, 30, data)
+                sns_msg = json.loads(message.body)
+                rec = json.loads(sns_msg["Message"])
+                for record in rec["Records"]:
+                    bucket = record["s3"]["bucket"]["name"]
+                    key = record["s3"]["object"]["key"]
+                    if key.startswith(S3_PREFIX):
+                        yield (bucket, key)
+                data.stop = True
+                logging.debug("stopping message visibility update")
+                fut.cancel()
+            message.delete()
+            logging.debug("message deleted")
+        messages = q.receive_messages(MaxNumberOfMessages=10)
+
+
+def get_process_and_save(sqs_url, out_dir):
+    for bucket, key in get_sqs_keys(sqs_url):
+        logging.info("Processing file from %s: %s", bucket, key)
+        generate_combined_file(key, out_dir, bucket)

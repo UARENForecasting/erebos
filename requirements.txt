@@ -29,3 +29,4 @@ scikit-learn
 scipy
 seaborn
 xarray
+croniter
