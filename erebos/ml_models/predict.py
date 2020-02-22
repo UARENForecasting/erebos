@@ -1,5 +1,4 @@
 from pathlib import Path
-import pickle
 
 
 import lightgbm
@@ -41,12 +40,6 @@ def _predict(ds, vars_, pred_func):
     out.mask = nans
     out[~nans] = pred.reshape(-1)
     return xr.DataArray(out.reshape(ds.dims["y"], ds.dims["x"]), dims=("y", "x"))
-
-
-def _predict_pickle(ds, pkl_model, vars_):
-    with open(str(Path(__file__).parent.absolute() / pkl_model), "rb") as f:
-        model = pickle.load(f)
-    return _predict(ds, vars_, model.predict)
 
 
 def _predict_onnx(ds, onnx_model, vars_):

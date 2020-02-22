@@ -13,7 +13,7 @@ from erebos.utils import RotatedECRPosition
 
 
 def project_xy_to_latlon(x, y, goes_file):
-    crs = goes_file.crs
+    crs = goes_file.crs.item()
     X, Y = np.meshgrid(goes_file.x, goes_file.y)
     lonlat = ccrs.Geodetic(globe=crs.globe).transform_points(crs, X, Y)
     lon = lonlat[:, :, 0].astype("float32")
