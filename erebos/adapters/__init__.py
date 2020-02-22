@@ -2,6 +2,7 @@ import numpy as np
 import xarray as xr
 
 
+from erebos import __version__
 from erebos.adapters.calipso import process_calipso_dataset
 from erebos.adapters.goes import process_goes_dataset
 from erebos.utils import RotatedECRPosition
@@ -52,6 +53,12 @@ class ErebosDataset:
             return self._xarray_obj.y
 
     @property
+    def mean_time(self):
+        if "erebos_mean_time" in self._xarray_obj.attrs:
+            return self._xarray_obj.attrs["erebos_mean_time"]
+        raise AttributeError()
+
+    @property
     def crs(self):
         if "erebos_crs" in self._xarray_obj.coords:
             return self._xarray_obj.coords["erebos_crs"].item()
@@ -59,8 +66,8 @@ class ErebosDataset:
 
     @property
     def spacecraft_location(self):
-        if "spacecraft_location" in self._xarray_obj.coords:
-            o = self._xarray_obj.coords["spacecraft_location"].values
+        if "erebos_spacecraft_location" in self._xarray_obj.coords:
+            o = self._xarray_obj.coords["erebos_spacecraft_location"].values
             return RotatedECRPosition(*o)
         raise AttributeError("spacecraft_location attribute is not available")
 
@@ -69,3 +76,13 @@ class ErebosDataset:
         if not hasattr(self, "_kdtree"):
             self._kdtree = construct_tree(self._xarray_obj)
         return self._kdtree
+
+    def to_netcdf(self, path, engine="h5netcdf", **kwargs):
+        ds = self._xarray_obj
+        keys = list(ds.data_vars) + list(ds.coords)
+        ds = ds.drop([k for k in keys if k.startswith("erebos")])
+        for attr in list(ds.attrs.keys()):
+            if attr.startswith("erebos"):
+                del ds.attrs[attr]
+        ds.attrs["erebos_version"] = __version__
+        ds.to_netcdf(path, engine=engine, **kwargs)

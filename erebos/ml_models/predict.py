@@ -50,6 +50,14 @@ def cloud_mask(ds):
     vars_ = [f"CMI_C{c:02d}" for c in range(1, 17)]
     da = _predict_onnx(ds, "cloud_mask.onnx", vars_)
     da.name = "cloud_mask"
+    da = da.assign_attrs(
+        long_name="Erebos predicted binary Clear Sky Mask",
+        standard_name="cloud_binary_mask",
+        valid_range=[0, 1],
+        flag_values=[0, 1],
+        flag_meanings=["clear_or_probably_clear", "cloudy_or_probably_cloudy"],
+    )
+    da.encoding = {"dtype": "uint8", "_FillValue": 255, "zlib": True}
     return da
 
 
@@ -57,6 +65,19 @@ def cloud_type(ds, cloud_mask):
     vars_ = [f"CMI_C{c:02d}" for c in range(1, 17)]
     da = _predict_onnx(ds, "cloud_type.onnx", vars_)
     da.name = "cloud_type"
+    da = da.assign_attrs(
+        long_name="Erebos Cloud Type Flag",
+        valid_range=[0, 4],
+        flag_values=[0, 1, 2, 3, 4],
+        flag_meanings=[
+            "no cloud",
+            "low cloud",
+            "mid-level cloud",
+            "high cloud",
+            "deep convective cloud",
+        ],
+    )
+    da.encoding = {"dtype": "uint8", "_FillValue": 255, "zlib": True}
     return da
 
 
@@ -66,6 +87,18 @@ def cloud_height(ds, cloud_mask, cloud_type):
     nds = ds.assign(cloud_type=cloud_type * cloud_mask)
     da = _predict_onnx(nds, "cloud_height.onnx", vars_)
     da.name = "cloud_height"
+    da = da.assign_attrs(
+        long_name="Erebos predicted Cloud Top Height",
+        standard_name="geopotential_cloud_top_height",
+        units="km",
+        valid_range=[0, 16],
+    )
+    da.encoding = {
+        "dtype": "uint16",
+        "scale_factor": 0.01,
+        "_FillValue": 65535,
+        "zlib": True,
+    }
     return da
 
 
@@ -91,5 +124,17 @@ def ghi(ds, cloud_mask, cloud_type, cloud_height):
         model_file=str(Path(__file__).parent.absolute() / "ghi.lgbm")
     )
     da = _predict(nds, vars_, booster.predict)
-    da.name = "GHI"
+    da.name = "ghi"
+    da = da.assign_attrs(
+        units="W m-2",
+        valid_range=[0, 1400],
+        standard_name="surface_downwelling_shortwave_flux_in_air",
+        long_name="Erebos predicted Global Horizontal Irradiance",
+    )
+    da.encoding = {
+        "dtype": "uint16",
+        "scale_factor": 0.1,
+        "_FillValue": 65535,
+        "zlib": True,
+    }
     return da

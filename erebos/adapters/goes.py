@@ -24,8 +24,10 @@ def project_xy_to_latlon(x, y, goes_file):
 
 def assign_latlon(goes_file):
     lon, lat = project_xy_to_latlon(goes_file.x, goes_file.y, goes_file)
-    lon_arr = xr.DataArray(lon, dims=("y", "x"))
-    lat_arr = xr.DataArray(lat, dims=("y", "x"))
+    lon_arr = xr.DataArray(lon.astype("float32"), dims=("y", "x"))
+    lat_arr = xr.DataArray(lat.astype("float32"), dims=("y", "x"))
+    lon_arr.encoding = {"zlib": True, "dtype": "float32", "scale_factor": 0.0001}
+    lat_arr.encoding = {"zlib": True, "dtype": "float32", "scale_factor": 0.0001}
     return goes_file.assign_coords(latitude=lat_arr, longitude=lon_arr)
 
 
@@ -59,13 +61,32 @@ def assign_solarposition_variables(goes_file):
         )
 
     mt = goes_file.erebos.mean_time
+    er = irradiance.get_extra_radiation(mt)
     extra = xr.DataArray(
-        np.ones((goes_file.dims["y"], goes_file.dims["x"]), dtype="float32")
-        * irradiance.get_extra_radiation(mt),
+        np.ones((goes_file.dims["y"], goes_file.dims["x"]), dtype="float32") * er,
         dims=("y", "x"),
     )
+    extra.encoding = {
+        "dtype": "uint8",
+        "scale_factor": 0.1,
+        "offset": er,
+        "zlib": True,
+        "_FillValue": 255,
+    }
     zen = xr.DataArray(solpos[1].astype("float32"), dims=("y", "x"))
+    zen.encoding = {
+        "dtype": "int16",
+        "scale_factor": 0.01,
+        "_FillValue": -32768,
+        "zlib": True,
+    }
     az = xr.DataArray(solpos[4].astype("float32"), dims=("y", "x"))
+    az.encoding = {
+        "dtype": "int16",
+        "scale_factor": 0.01,
+        "_FillValue": -32768,
+        "zlib": True,
+    }
     return goes_file.assign(
         {"solar_zenith": zen, "solar_azimuth": az, "solar_extra_radiation": extra}
     )
@@ -76,7 +97,16 @@ def assign_surface_elevation(goes_file):
     elev = xr.DataArray(
         np.zeros((goes_file.dims["y"], goes_file.dims["x"]), dtype="float32"),
         dims=("y", "x"),
+        name="elevation",
     )
+    elev.assign_attrs(units="km")
+    elev.encoding = {
+        "dtype": "uint16",
+        "zlib": True,
+        "_FillValue": 65535,
+        "offset": 1,
+        "scale_factor": 0.001,
+    }
     return goes_file.assign(surface_elevation=elev)
 
 
@@ -107,11 +137,11 @@ def add_spacecraft_location(ds):
         ds.goes_imager_projection.perspective_point_height,
     )
     loc = xr.DataArray(np.array(rep)[:, None], dims=("ECR axis", "locations"))
-    return ds.assign_coords(spacecraft_location=loc)
+    return ds.assign_coords(erebos_spacecraft_location=loc)
 
 
 def add_mean_time(ds):
-    return ds.assign_attrs(mean_time=ds.t.values)
+    return ds.assign_attrs(erebos_mean_time=ds.t.values)
 
 
 def process_goes_dataset(ds):
