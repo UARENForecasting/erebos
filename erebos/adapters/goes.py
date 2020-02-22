@@ -13,8 +13,9 @@ from erebos.utils import RotatedECRPosition
 
 
 def project_xy_to_latlon(x, y, goes_file):
-    crs = goes_file.crs.item()
-    X, Y = np.meshgrid(goes_file.x, goes_file.y)
+    ds = goes_file.erebos
+    crs = ds.crs
+    X, Y = np.meshgrid(ds.erebos.x, ds.erebos.y)
     lonlat = ccrs.Geodetic(globe=crs.globe).transform_points(crs, X, Y)
     lon = lonlat[:, :, 0].astype("float32")
     lat = lonlat[:, :, 1].astype("float32")
@@ -26,6 +27,19 @@ def assign_latlon(goes_file):
     lon_arr = xr.DataArray(lon, dims=("y", "x"))
     lat_arr = xr.DataArray(lat, dims=("y", "x"))
     return goes_file.assign_coords(latitude=lat_arr, longitude=lon_arr)
+
+
+def restrict_domain(goes_file, lon_limits, lat_limits):
+    ds = goes_file.erebos
+    crs = ds.crs
+    x = ds.erebos_x
+    y = ds.erebos_y
+    pts = crs.transform_points(
+        crs.as_geodetic(), np.asarray(lon_limits), np.asarray(lat_limits)
+    )
+    okx = (x > pts[0, 0]) & (x < pts[1, 0])
+    oky = (y > pts[0, 1]) & (y < pts[1, 1])
+    return goes_file.isel(y=oky, x=okx)
 
 
 def assign_solarposition_variables(goes_file):
@@ -78,11 +92,10 @@ def add_projection(ds):
         central_longitude=proj_info.longitude_of_projection_origin,
         sweep_axis=proj_info.sweep_angle_axis,
     )
-    return ds.assign_coords(crs=crs).update(
-        {
-            "x": ds.x * proj_info.perspective_point_height,
-            "y": ds.y * proj_info.perspective_point_height,
-        }
+    return ds.assign_coords(
+        erebos_crs=crs,
+        erebos_x=ds.x * proj_info.perspective_point_height,
+        erebos_y=ds.y * proj_info.perspective_point_height,
     )
 
 

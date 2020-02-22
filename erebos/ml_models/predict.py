@@ -12,7 +12,7 @@ from erebos.adapters import goes
 
 
 def prepare_dataset(ds):
-    if not hasattr(ds, "erebos_version"):
+    if not hasattr(ds, "is_erebos_ds"):
         ds = ds.erebos
 
     return (

@@ -98,7 +98,7 @@ def add_other_convenience_vars(ds):
 
 
 def add_projection(ds):
-    return ds.assign_coords(crs=ccrs.PlateCarree())
+    return ds.assign_coords(erebos_crs=ccrs.PlateCarree())
 
 
 def add_spacecraft_location(ds):

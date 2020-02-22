@@ -40,13 +40,27 @@ class ErebosDataset:
         return repr(self._xarray_obj)
 
     @property
+    def x(self):
+        try:
+            return self._xarray_obj.erebos_x
+        except AttributeError:
+            return self._xarray_obj.x
+
+    @property
+    def y(self):
+        try:
+            return self._xarray_obj.erebos_y
+        except AttributeError:
+            return self._xarray_obj.y
+
+    @property
     def crs(self):
-        if "crs" in self._xarray_obj.coords:
-            return self._xarray_obj.coords["crs"].item()
+        if "erebos_crs" in self._xarray_obj.coords:
+            return self._xarray_obj.coords["erebos_crs"].item()
         raise AttributeError("crs attribute is not available")
 
     @property
-    def spacecraft_location(self):
+    def spacecraft_ecr_position(self):
         if "spacecraft_location" in self._xarray_obj.coords:
             o = self._xarray_obj.coords["spacecraft_location"].values
             return RotatedECRPosition(*o)
