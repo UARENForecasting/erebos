@@ -58,7 +58,8 @@ def find_shifted_index(ds_subset, lat, lon, heights, nans):
     hvals[hvals < 1] = 0
     hvals = hvals.reshape(ds_subset.dims["x"], ds_subset.dims["y"]).T
 
-    glon, glat = project_xy_to_latlon(ds_subset.x, ds_subset.y, ds_subset)
+    dss = ds_subset.erebos
+    glon, glat = project_xy_to_latlon(dss.x, dss.y, dss)
 
     apparent_cloudlocs = utils.RotatedECRPosition.from_geodetic(glat, glon, 0)
     actual_cloudlocs = utils.find_actual_cloud_position(

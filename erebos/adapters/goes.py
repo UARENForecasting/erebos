@@ -13,7 +13,7 @@ from erebos.utils import RotatedECRPosition
 
 
 def project_xy_to_latlon(x, y, goes_file):
-    crs = goes_file.crs.item()
+    crs = goes_file.crs
     X, Y = np.meshgrid(goes_file.x, goes_file.y)
     lonlat = ccrs.Geodetic(globe=crs.globe).transform_points(crs, X, Y)
     lon = lonlat[:, :, 0].astype("float32")
@@ -89,8 +89,8 @@ def add_projection(ds):
 def add_spacecraft_location(ds):
     rep = RotatedECRPosition.from_geodetic(
         0,
-        ds.goes_imager_projection.longitude_of_projection_origin.item(),
-        ds.goes_imager_projection.perspective_point_height.item(),
+        ds.goes_imager_projection.longitude_of_projection_origin,
+        ds.goes_imager_projection.perspective_point_height,
     )
     loc = xr.DataArray(np.array(rep)[:, None], dims=("ECR axis", "locations"))
     return ds.assign_coords(spacecraft_location=loc)

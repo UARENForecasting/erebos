@@ -1,4 +1,5 @@
 from pathlib import Path
+import pickle
 
 
 import lightgbm
@@ -26,7 +27,7 @@ def _predict(ds, vars_, pred_func):
     arr = (
         ds[vars_]
         .to_array("var")
-        .stack(z=("x", "y"))
+        .stack(z=("y", "x"))
         .transpose("z", "var")
         .sel(var=vars_)
         .values
@@ -40,6 +41,12 @@ def _predict(ds, vars_, pred_func):
     out.mask = nans
     out[~nans] = pred.reshape(-1)
     return xr.DataArray(out.reshape(ds.dims["y"], ds.dims["x"]), dims=("y", "x"))
+
+
+def _predict_pickle(ds, pkl_model, vars_):
+    with open(str(Path(__file__).parent.absolute() / pkl_model), "rb") as f:
+        model = pickle.load(f)
+    return _predict(ds, vars_, model.predict)
 
 
 def _predict_onnx(ds, onnx_model, vars_):
@@ -78,6 +85,7 @@ def ghi(ds, cloud_mask, cloud_type, cloud_height):
         "solar_zenith",
         "solar_azimuth",
         "solar_extra_radiation",
+        "surface_elevation",
         "latitude",
         "longitude",
         "cloud_type",
@@ -88,7 +96,7 @@ def ghi(ds, cloud_mask, cloud_type, cloud_height):
         cloud_mask=cloud_mask,
         cloud_type=cloud_type * cloud_mask,
         cloud_height=cloud_height,
-    )
+    ).reset_coords(("latitude", "longitude"))
     booster = lightgbm.Booster(
         model_file=str(Path(__file__).parent.absolute() / "ghi.lgbm")
     )
