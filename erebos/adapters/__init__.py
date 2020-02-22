@@ -32,6 +32,8 @@ class ErebosDataset:
         self._xarray_obj = func(xarray_obj)
 
     def __getattr__(self, name):
+        if name == "erebos":
+            raise AttributeError("'ErebosDataset' has no attribute 'erebos'")
         return getattr(self._xarray_obj, name)
 
     def __repr__(self):

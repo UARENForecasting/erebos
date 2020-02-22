@@ -1,5 +1,6 @@
 from dataclasses import dataclass, asdict
 from pathlib import Path
+import warnings
 
 
 import cartopy.crs as ccrs
@@ -12,32 +13,11 @@ from erebos.utils import RotatedECRPosition
 
 
 def project_xy_to_latlon(x, y, goes_file):
-    proj_info = goes_file.goes_imager_projection
-    lon_origin = proj_info.longitude_of_projection_origin
-    H = proj_info.perspective_point_height + proj_info.semi_major_axis
-    r_eq = proj_info.semi_major_axis
-    r_pol = proj_info.semi_minor_axis
-    f = r_eq / r_pol
-
-    # create meshgrid filled with radian angles
-    lat_rad, lon_rad = np.meshgrid(x, y)
-
-    # lat/lon calc routine from satellite radian angle vectors
-    lambda_0 = np.radians(lon_origin)
-
-    Vx = np.cos(lat_rad) * np.cos(lon_rad)
-    Vy = -1.0 * np.sin(lat_rad)
-    Vz = np.cos(lat_rad) * np.sin(lon_rad)
-
-    av = Vx ** 2 + Vy ** 2 + f ** 2 * Vz ** 2
-    bv = -2.0 * H * Vx
-    cv = H ** 2 - r_eq ** 2
-
-    r_s = (-bv - np.sqrt(bv ** 2 - 4 * av * cv)) / (2 * av)
-
-    lon = np.degrees(lambda_0 - np.arctan2(Vy, H / r_s - Vx))
-    lon[lon < -180] += 360
-    lat = np.degrees(np.arctan2(f ** 2 * Vz, np.sqrt((H / r_s - Vx) ** 2 + Vy ** 2)))
+    crs = goes_file.crs.item()
+    X, Y = np.meshgrid(goes_file.x, goes_file.y)
+    lonlat = ccrs.Geodetic(globe=crs.globe).transform_points(crs, X, Y)
+    lon = lonlat[:, :, 0].astype("float32")
+    lat = lonlat[:, :, 1].astype("float32")
     return lon, lat
 
 
@@ -45,26 +25,63 @@ def assign_latlon(goes_file):
     lon, lat = project_xy_to_latlon(goes_file.x, goes_file.y, goes_file)
     lon_arr = xr.DataArray(lon, dims=("y", "x"))
     lat_arr = xr.DataArray(lat, dims=("y", "x"))
-    return goes_file.assign_coords(lat=lat_arr, lon=lon_arr)
+    return goes_file.assign_coords(latitude=lat_arr, longitude=lon_arr)
+
+
+def assign_solarposition_variables(goes_file):
+    from pvlib import spa, irradiance
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        solpos = spa.solar_position(
+            goes_file.t.data.astype(int) / 1e9,
+            goes_file.latitude.data,
+            goes_file.longitude.data,
+            0,
+            101.325,
+            12,
+            67,
+            0.5667,
+        )
+
+    extra = xr.DataArray(
+        np.ones((goes_file.dims["y"], goes_file.dims["x"]), dtype="float32")
+        * irradiance.get_extra_radiation(goes_file.t.data),
+        dims=("y", "x"),
+    )
+    zen = xr.DataArray(solpos[1].astype("float32"), dims=("y", "x"))
+    az = xr.DataArray(solpos[4].astype("float32"), dims=("y", "x"))
+    return goes_file.assign(
+        {"solar_zenith": zen, "solar_azimuth": az, "solar_extra_radiation": extra}
+    )
+
+
+def assign_surface_elevation(goes_file):
+    # FIX ME
+    elev = xr.DataArray(
+        np.zeros((goes_file.dims["y"], goes_file.dims["x"]), dtype="float32"),
+        dims=("y", "x"),
+    )
+    return goes_file.assign(surface_elevation=elev)
 
 
 def add_projection(ds):
     proj_info = ds.goes_imager_projection
     globe = ccrs.Globe(
-        semimajor_axis=proj_info.semi_major_axis.item(),
-        semiminor_axis=proj_info.semi_minor_axis.item(),
-        inverse_flattening=proj_info.inverse_flattening.item(),
+        semimajor_axis=proj_info.semi_major_axis,
+        semiminor_axis=proj_info.semi_minor_axis,
+        inverse_flattening=proj_info.inverse_flattening,
     )
     crs = ccrs.Geostationary(
         globe=globe,
-        satellite_height=proj_info.perspective_point_height.item(),
-        central_longitude=proj_info.longitude_of_projection_origin.item(),
+        satellite_height=proj_info.perspective_point_height,
+        central_longitude=proj_info.longitude_of_projection_origin,
         sweep_axis=proj_info.sweep_angle_axis,
     )
     return ds.assign_coords(crs=crs).update(
         {
-            "x": ds.x * proj_info.perspective_point_height.item(),
-            "y": ds.y * proj_info.perspective_point_height.item(),
+            "x": ds.x * proj_info.perspective_point_height,
+            "y": ds.y * proj_info.perspective_point_height,
         }
     )
 
