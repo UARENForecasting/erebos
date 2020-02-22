@@ -12,9 +12,6 @@ from erebos.adapters import goes
 
 
 def prepare_dataset(ds):
-    if not hasattr(ds, "is_erebos_ds"):
-        ds = ds.erebos
-
     return (
         ds.pipe(goes.assign_latlon)
         .pipe(goes.assign_surface_elevation)

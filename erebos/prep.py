@@ -110,10 +110,10 @@ def translate_calipso_locations(calipso_ds, goes_ds, fill_na=True, level=0):
         0.0,
     )
     actual_cloud_pos = utils.find_actual_cloud_position(
-        calipso_ds.erebos.spacecraft_ecr_position, cloud_locations, cloud_heights
+        calipso_ds.erebos.spacecraft_location, cloud_locations, cloud_heights
     )
     apparent_cloud_pos = utils.find_apparent_cloud_position(
-        goes_ds.erebos.spacecraft_ecr_position, actual_cloud_pos, terrain_height
+        goes_ds.erebos.spacecraft_location, actual_cloud_pos, terrain_height
     )
     alat, alon = apparent_cloud_pos.to_geodetic()
     goes_cloud_pos = goes_ds.erebos.crs.transform_points(ccrs.Geodetic(), alon, alat)

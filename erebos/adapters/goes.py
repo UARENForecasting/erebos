@@ -58,9 +58,10 @@ def assign_solarposition_variables(goes_file):
             0.5667,
         )
 
+    mt = goes_file.erebos.mean_time
     extra = xr.DataArray(
         np.ones((goes_file.dims["y"], goes_file.dims["x"]), dtype="float32")
-        * irradiance.get_extra_radiation(goes_file.t.data),
+        * irradiance.get_extra_radiation(mt),
         dims=("y", "x"),
     )
     zen = xr.DataArray(solpos[1].astype("float32"), dims=("y", "x"))
