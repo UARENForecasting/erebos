@@ -77,7 +77,7 @@ class ErebosDataset:
             self._kdtree = construct_tree(self._xarray_obj)
         return self._kdtree
 
-    def to_netcdf(self, path, engine="h5netcdf", **kwargs):
+    def _pre_save(self):
         ds = self._xarray_obj
         keys = list(ds.data_vars) + list(ds.coords)
         ds = ds.drop([k for k in keys if k.startswith("erebos")])
@@ -85,4 +85,12 @@ class ErebosDataset:
             if attr.startswith("erebos"):
                 del ds.attrs[attr]
         ds.attrs["erebos_version"] = __version__
+        return ds
+
+    def to_netcdf(self, path, *, engine="h5netcdf", **kwargs):
+        ds = self._pre_save()
         ds.to_netcdf(path, engine=engine, **kwargs)
+
+    def to_zarr(self, path, *, consolidated=True, **kwargs):
+        ds = self._pre_save()
+        ds.to_zarr(path, consolidated=consolidated, **kwargs)
