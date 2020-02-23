@@ -108,6 +108,8 @@ class ErebosDataset:
 
     def to_netcdf(self, path, **kwargs):
         ds = self._pre_save()
+        if "engine" not in kwargs:
+            kwargs["engine"] = "h5netcdf"
         ds.to_netcdf(path, **kwargs)
 
     def to_zarr(self, path, *, consolidated=True, **kwargs):

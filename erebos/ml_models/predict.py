@@ -177,7 +177,7 @@ def full_prediction(
     combined_path, nc_dir=None, zarr_dir=None, domain=(-115, -103, 30, 38)
 ):
     logging.info("Predicting quantities based on %s", combined_path)
-    inp = xr.open_dataset(combined_path)
+    inp = xr.open_dataset(combined_path, engine="h5netcdf")
     restricted = goes.restrict_domain(inp, domain[:2], domain[2:])
     prepped = prepare_dataset(restricted)
     cmask = predict_cloud_mask(prepped)
@@ -193,7 +193,7 @@ def full_prediction(
     out = out.drop(drop_vars)
     nvars = {var: prepped[var] for var in prepped.data_vars if var not in drop_vars}
     out = out.assign(nvars)
-    out.attrs["datasets"] += [str(combined_path.absolute())]
+    out.attrs["datasets"] = str(combined_path.absolute())
     mean_time = pd.Timestamp(prepped.erebos.mean_time)
     if nc_dir is not None:
         ncpath = nc_dir / mean_time.strftime(
