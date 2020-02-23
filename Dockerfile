@@ -1,19 +1,24 @@
-FROM docker.io/library/python:slim
+FROM docker.io/library/python:3.7-buster
 
 WORKDIR /opt/app-root/
 ENV PATH=/opt/app-root/bin:$PATH
 
-RUN TEMPPKG='gcc g++' \
-    && apt update \
-    && apt install -y libproj-dev libgeos-dev git proj-bin $TEMPPKG\
+RUN apt update \
+    && apt install -y libproj-dev libgeos-dev git proj-bin gcc g++ \
+    && apt clean \
+    && rm -rf /var/lib/apt/lists/* \
     && /usr/local/bin/python -m venv /opt/app-root/ \
-    && git clone --depth 1 --branch master \
-       -- https://github.com/uarenforecasting/erebos build \
-    && pip install --no-cache-dir -r build/requirements.txt \
+    && /opt/app-root/bin/pip install -U pip \
+    && useradd -M -N -u 1001 -s /bin/bash -g 0 user
+
+
+COPY . build/.
+
+RUN pip install --no-cache-dir -r build/requirements.txt \
     && pip install build/. \
     && rm -rf build \
-    && apt autoremove -y $TEMPPKG \
-    && apt clean \
-    && rm -rf /var/lib/apt/lists/*
+    && chown -R 1001:0 /opt/app-root
+
+USER 1001
 
 CMD ["/opt/app-root/bin/erebos"]
