@@ -142,6 +142,10 @@ def assign_surface_elevation(goes_file):
 
 def add_projection(ds):
     proj_info = ds.goes_imager_projection
+    pattrs = proj_info.attrs
+    for k, v in pattrs.items():
+        if isinstance(v, np.ndarray):
+            pattrs[k] = v.item()
     globe = ccrs.Globe(
         semimajor_axis=proj_info.semi_major_axis,
         semiminor_axis=proj_info.semi_minor_axis,
