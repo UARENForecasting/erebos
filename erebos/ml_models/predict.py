@@ -156,6 +156,7 @@ def predict_ghi(ds, cloud_mask=None, cloud_type=None, cloud_height=None):
         model_file=str(Path(__file__).parent.absolute() / "ghi.lgbm")
     )
     da = _predict(nds, vars_, booster.predict)
+    da = da.where(ds.solar_zenith < 90).fillna(0)
     da.name = "ghi"
     da = da.assign_attrs(
         units="W m-2",
