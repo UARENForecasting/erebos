@@ -10,6 +10,8 @@ from erebos.utils import RotatedECRPosition
 
 def get_processing_func(ds):
     for val in ds.attrs.values():
+        if not isinstance(val, str):
+            continue
         if "goes" in val.lower():
             return process_goes_dataset
         elif "calipso" in val.lower():
@@ -85,11 +87,11 @@ class ErebosDataset:
             if attr.startswith("erebos"):
                 del ds.attrs[attr]
         ds.attrs["erebos_version"] = __version__
-        return ds
+        return ds.expand_dims("t")
 
-    def to_netcdf(self, path, *, engine="h5netcdf", **kwargs):
+    def to_netcdf(self, path, **kwargs):
         ds = self._pre_save()
-        ds.to_netcdf(path, engine=engine, **kwargs)
+        ds.to_netcdf(path, **kwargs)
 
     def to_zarr(self, path, *, consolidated=True, **kwargs):
         ds = self._pre_save()

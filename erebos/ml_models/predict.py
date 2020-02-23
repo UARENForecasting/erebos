@@ -1,14 +1,19 @@
+import logging
 from pathlib import Path
 
 
 import lightgbm
 import numpy as np
 import onnxruntime as rt
+import pandas as pd
 import xarray as xr
 
 
 import erebos.adapters  # NOQA
 from erebos.adapters import goes
+
+
+logging = logging.getLogger(__name__)
 
 
 def prepare_dataset(ds):
@@ -46,7 +51,8 @@ def _predict_onnx(ds, onnx_model, vars_):
     return _predict(ds, vars_, lambda x: sess.run([output_name], {input_name: x})[0])
 
 
-def cloud_mask(ds):
+def predict_cloud_mask(ds):
+    logging.info("Predicting cloud mask...")
     vars_ = [f"CMI_C{c:02d}" for c in range(1, 17)]
     da = _predict_onnx(ds, "cloud_mask.onnx", vars_)
     da.name = "cloud_mask"
@@ -61,7 +67,8 @@ def cloud_mask(ds):
     return da
 
 
-def cloud_type(ds, cloud_mask):
+def predict_cloud_type(ds):
+    logging.info("Predicting cloud type...")
     vars_ = [f"CMI_C{c:02d}" for c in range(1, 17)]
     da = _predict_onnx(ds, "cloud_type.onnx", vars_)
     da.name = "cloud_type"
@@ -81,9 +88,14 @@ def cloud_type(ds, cloud_mask):
     return da
 
 
-def cloud_height(ds, cloud_mask, cloud_type):
+def predict_cloud_height(ds, cloud_mask=None, cloud_type=None):
+    logging.info("Predicting cloud height...")
     vars_ = [f"CMI_C{c:02d}" for c in range(1, 17)]
     vars_ += ["cloud_type"]
+    if cloud_mask is None:
+        cloud_mask = predict_cloud_mask(ds)
+    if cloud_type is None:
+        cloud_type = predict_cloud_type(ds)
     nds = ds.assign(cloud_type=cloud_type * cloud_mask)
     da = _predict_onnx(nds, "cloud_height.onnx", vars_)
     da.name = "cloud_height"
@@ -102,7 +114,8 @@ def cloud_height(ds, cloud_mask, cloud_type):
     return da
 
 
-def ghi(ds, cloud_mask, cloud_type, cloud_height):
+def predict_ghi(ds, cloud_mask=None, cloud_type=None, cloud_height=None):
+    logging.info("Predicting GHI...")
     vars_ = [f"CMI_C{c:02d}" for c in range(1, 17)]
     vars_ += [
         "solar_zenith",
@@ -115,6 +128,14 @@ def ghi(ds, cloud_mask, cloud_type, cloud_height):
         "cloud_height",
         "cloud_mask",
     ]
+    if "longitude" not in ds:
+        ds = prepare_dataset(ds)
+    if cloud_mask is None:
+        cloud_mask = predict_cloud_mask(ds)
+    if cloud_type is None:
+        cloud_type = predict_cloud_type(ds)
+    if cloud_height is None:
+        cloud_height = predict_cloud_height(ds, cloud_mask, cloud_type)
     nds = ds.assign(
         cloud_mask=cloud_mask,
         cloud_type=cloud_type * cloud_mask,
@@ -138,3 +159,40 @@ def ghi(ds, cloud_mask, cloud_type, cloud_height):
         "zlib": True,
     }
     return da
+
+
+def full_prediction(
+    combined_path, nc_dir=None, zarr_dir=None, domain=(-115, -103, 30, 38)
+):
+    logging.info("Predicting quantities based on %s", combined_path)
+    inp = xr.open_dataset(combined_path)
+    restricted = goes.restrict_domain(inp, domain[:2], domain[2:])
+    prepped = prepare_dataset(restricted)
+    cmask = predict_cloud_mask(prepped)
+    ctype = predict_cloud_type(prepped)
+    cheight = predict_cloud_height(prepped, cmask, ctype)
+    cghi = predict_ghi(prepped, cmask, ctype, cheight)
+    out = prepped.assign(
+        {cmask.name: cmask, ctype.name: ctype, cheight.name: cheight, cghi.name: cghi}
+    )
+    mean_time = pd.Timestamp(prepped.erebos.mean_time)
+    if nc_dir is not None:
+        ncpath = nc_dir / mean_time.strftime(
+            "%Y/%m/%d/erebos_prediction_%Y%m%dT%H%M%SZ.nc"
+        )
+        ncpath.parent.mkdir(parents=True, exist_ok=True)
+        logging.info("Saving NetCDF to %s", ncpath)
+        out.erebos.to_netcdf(ncpath)
+    if zarr_dir is not None:
+        zarrpath = zarr_dir / mean_time.strftime("%Y/%m/%d")
+        zarrpath.mkdir(parents=True, exist_ok=True)
+        logging.info("Saving zarr to %s", zarrpath)
+        if (zarrpath / ".zmetadata").exists():
+            root = xr.open_zarr(str(zarrpath))
+            if out.erebos.t.data in root.t.data:
+                logging.warning("Time already present in zarr group, not saving")
+            else:
+                out.erebos.to_zarr(zarrpath, append_dim="t")
+        else:
+            out.erebos.to_zarr(zarrpath)
+    inp.close()
