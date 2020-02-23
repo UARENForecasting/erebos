@@ -2,15 +2,13 @@
 # coding: utf-8
 
 import os
-import logging
 
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
-logging.basicConfig(format="%(asctime)s %(message)s", level="INFO")
 
-from functools import partial
-from concurrent.futures import ProcessPoolExecutor
+
 import xarray as xr
 import pandas as pd
+import logging
 from erebos import utils
 from erebos.adapters.goes import project_xy_to_latlon, GOESFilename
 import numpy as np
@@ -60,8 +58,7 @@ def find_shifted_index(ds_subset, lat, lon, heights, nans):
     hvals[hvals < 1] = 0
     hvals = hvals.reshape(ds_subset.dims["x"], ds_subset.dims["y"]).T
 
-    dss = ds_subset.erebos
-    glon, glat = project_xy_to_latlon(dss.x, dss.y, dss)
+    glon, glat = project_xy_to_latlon(ds_subset.x, ds_subset.y, ds_subset)
 
     apparent_cloudlocs = utils.RotatedECRPosition.from_geodetic(glat, glon, 0)
     actual_cloudlocs = utils.find_actual_cloud_position(
@@ -88,8 +85,7 @@ def find_shifted_index(ds_subset, lat, lon, heights, nans):
     return shifted_yx
 
 
-def process_site(goes_ds, site, models):
-    height_model, mask_model, type_model = models
+def process_site(goes_ds, site):
     lat = site.latitude.item()
     lon = site.longitude.item()
     gvals = data_around(goes_ds, lon, lat)
@@ -150,35 +146,36 @@ def get_predict_at_pt(pred, yx, gvals):
     return pred.reshape(gvals.dims["x"], gvals.dims["y"]).T[yx]
 
 
-def get_files(base_path):
-    for f in Path(base_path).glob("**/*MCMIPC*.nc"):
-        yield GOESFilename.from_path(f)
+if __name__ == "__main__":
+    logging.basicConfig(format="%(asctime)s %(message)s", level="INFO")
 
+    with open("height.pkl", "rb") as f:
+        height_model = pickle.load(f)
 
-def doone(gfile, site_data, models):
-    if gfile.start.hour < 13:
-        return None
-    logging.info("Processing file from %s", gfile.start)
-    with xr.open_dataset(gfile.filename) as goes_ds:
-        tomerge = []
-        for _, site in site_data.groupby("site"):
-            try:
-                tomerge.append(process_site(goes_ds, site, models))
-            except Exception as e:
-                logging.error(e)
-                continue
-        out = xr.merge(tomerge)
-    return out
+    with open("cloud_mask.pkl", "rb") as f:
+        mask_model = pickle.load(f)
+    with open("cloud_type.pkl", "rb") as f:
+        type_model = pickle.load(f)
 
-
-def process_day(base_path, site_data, models):
-    goes_files = get_files(base_path)
-    with ProcessPoolExecutor(max_workers=8) as exc:
-        final_countdown = exc.map(
-            partial(doone, models=models, site_data=site_data), goes_files, chunksize=10
+    site_data = xr.open_dataset("/storage/projects/goes_alg/site_data.nc")
+    goes_files = [
+        GOESFilename.from_path(f)
+        for f in Path("/storage/projects/goes_alg/goes_data/west/CMIP").glob(
+            "*MCMIPC*.nc"
         )
-    ff = [f for f in final_countdown if f is not None]
-    output = xr.merge(ff)
+    ]
+
+    final_countdown = []
+    for gfile in goes_files:
+        if gfile.start.hour < 13:
+            continue
+        logging.info("Processing file from %s", gfile.start)
+        with xr.open_dataset(gfile.filename) as goes_ds:
+            tomerge = []
+            for _, site in site_data.groupby("site"):
+                tomerge.append(process_site(goes_ds, site))
+            final_countdown.append(xr.merge(tomerge))
+    output = xr.merge(final_countdown)
 
     m = []
     for _, site in site_data.groupby("site"):
@@ -195,21 +192,3 @@ def process_day(base_path, site_data, models):
     solpos = xr.concat(m, "site").transpose("time", "site")
     fullout = xr.merge([output, solpos])
     fullout.to_netcdf("combined_mcmip.nc")
-
-
-if __name__ == "__main__":
-    logging.getLogger().setLevel("INFO")
-    site_data = xr.open_dataset("../site_data.nc")
-    with open("../erebos/ml_models/height.pkl", "rb") as f:
-        height_model = pickle.load(f)
-
-    with open("../erebos/ml_models/cloud_mask.pkl", "rb") as f:
-        mask_model = pickle.load(f)
-    with open("../erebos/ml_models/cloud_type.pkl", "rb") as f:
-        type_model = pickle.load(f)
-
-    models = (height_model, mask_model, type_model)
-    for year in Path("/d2/uaren/goes_data/G16/CONUS").glob("*"):
-        for month in year.glob("*"):
-            for day in month.glob("*"):
-                process_day(day, site_data, models)
