@@ -19,8 +19,8 @@ from erebos.adapters import goes
 def example_file():
     ds = xr.Dataset(
         {
-            "x": ("x", np.linspace(-0.069993, 0.069993, 100, dtype="float32")),
-            "y": ("y", np.linspace(0.128233, 0.044247, 60, dtype="float32")),
+            "x": ("x", np.linspace(-0.1, -0.055, 100, dtype="float32")),
+            "y": ("y", np.linspace(0.077, 0.11, 60, dtype="float32")),
         }
     )
     img = xr.DataArray(np.array(-2147483647, dtype="int32")).assign_attrs(
