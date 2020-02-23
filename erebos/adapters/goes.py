@@ -23,12 +23,21 @@ def project_xy_to_latlon(x, y, goes_file):
 
 
 def assign_latlon(goes_file):
+    sel = {}
+    for dim in ("y", "x"):
+        if dim not in goes_file.dims:
+            goes_file = goes_file.expand_dims(dim)
+            sel[dim] = 0
+
     lon, lat = project_xy_to_latlon(goes_file.x, goes_file.y, goes_file)
     lon_arr = xr.DataArray(lon.astype("float32"), dims=("y", "x"))
     lat_arr = xr.DataArray(lat.astype("float32"), dims=("y", "x"))
     lon_arr.encoding = {"zlib": True, "dtype": "float32", "scale_factor": 0.0001}
     lat_arr.encoding = {"zlib": True, "dtype": "float32", "scale_factor": 0.0001}
-    return goes_file.assign_coords(latitude=lat_arr, longitude=lon_arr)
+    out = goes_file.assign_coords(latitude=lat_arr, longitude=lon_arr)
+    if sel:
+        out = out.isel(sel)
+    return out
 
 
 def restrict_domain(goes_file, lon_limits, lat_limits):
@@ -47,12 +56,21 @@ def restrict_domain(goes_file, lon_limits, lat_limits):
 def assign_solarposition_variables(goes_file):
     from pvlib import spa, irradiance
 
+    ds = goes_file
+    sel = {}
+    for dim in ("t", "y", "x"):
+        if dim not in ds.dims:
+            ds = ds.expand_dims(dim)
+            sel[dim] = 0
+
+    time_data = ds.t.data.astype(int)[:, None, None] / 1e9
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
+        # THIS SHOULD SUPPORT MANY t at once
         solpos = spa.solar_position(
-            goes_file.t.data.astype(int) / 1e9,
-            goes_file.latitude.data,
-            goes_file.longitude.data,
+            time_data,
+            ds.latitude.expand_dims("t").data,
+            ds.longitude.expand_dims("t").data,
             0,
             101.325,
             12,
@@ -60,11 +78,10 @@ def assign_solarposition_variables(goes_file):
             0.5667,
         )
 
-    mt = goes_file.erebos.mean_time
-    er = irradiance.get_extra_radiation(mt)
+    er = irradiance.get_extra_radiation(time_data)
     extra = xr.DataArray(
-        np.ones((goes_file.dims["y"], goes_file.dims["x"]), dtype="float32") * er,
-        dims=("y", "x"),
+        np.ones((ds.dims["t"], ds.dims["y"], ds.dims["x"]), dtype="float32") * er,
+        dims=("t", "y", "x"),
     )
     extra.encoding = {
         "dtype": "uint8",
@@ -73,27 +90,37 @@ def assign_solarposition_variables(goes_file):
         "zlib": True,
         "_FillValue": 255,
     }
-    zen = xr.DataArray(solpos[1].astype("float32"), dims=("y", "x"))
+    zen = xr.DataArray(solpos[1].astype("float32"), dims=("t", "y", "x"))
     zen.encoding = {
         "dtype": "int16",
         "scale_factor": 0.01,
         "_FillValue": -32768,
         "zlib": True,
     }
-    az = xr.DataArray(solpos[4].astype("float32"), dims=("y", "x"))
+    az = xr.DataArray(solpos[4].astype("float32"), dims=("t", "y", "x"))
     az.encoding = {
         "dtype": "int16",
         "scale_factor": 0.01,
         "_FillValue": -32768,
         "zlib": True,
     }
-    return goes_file.assign(
+    out = ds.assign(
         {"solar_zenith": zen, "solar_azimuth": az, "solar_extra_radiation": extra}
     )
+    if sel:
+        out = out.isel(sel)
+    return out
 
 
 def assign_surface_elevation(goes_file):
     # FIX ME
+
+    sel = {}
+    for dim in ("y", "x"):
+        if dim not in goes_file.dims:
+            goes_file = goes_file.expand_dims(dim)
+            sel[dim] = 0
+
     elev = xr.DataArray(
         np.zeros((goes_file.dims["y"], goes_file.dims["x"]), dtype="float32"),
         dims=("y", "x"),
@@ -107,7 +134,10 @@ def assign_surface_elevation(goes_file):
         "offset": 1,
         "scale_factor": 0.001,
     }
-    return goes_file.assign(surface_elevation=elev)
+    out = goes_file.assign(surface_elevation=elev)
+    if sel:
+        out = out.isel(sel)
+    return out
 
 
 def add_projection(ds):

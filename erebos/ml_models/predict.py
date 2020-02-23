@@ -25,10 +25,16 @@ def prepare_dataset(ds):
 
 
 def _predict(ds, vars_, pred_func):
+    sel = {}
+    for dim in ("t", "y", "x"):
+        if dim not in ds.dims:
+            ds = ds.expand_dims(dim)
+            sel[dim] = 0
+
     arr = (
         ds[vars_]
         .to_array("var")
-        .stack(z=("y", "x"))
+        .stack(z=("t", "y", "x"))
         .transpose("z", "var")
         .sel(var=vars_)
         .values
@@ -41,7 +47,12 @@ def _predict(ds, vars_, pred_func):
     out = np.ma.ones(nans.shape, dtype="float32")
     out.mask = nans
     out[~nans] = pred.reshape(-1)
-    return xr.DataArray(out.reshape(ds.dims["y"], ds.dims["x"]), dims=("y", "x"))
+    out = xr.DataArray(
+        out.reshape(ds.dims["t"], ds.dims["y"], ds.dims["x"]), dims=("t", "y", "x")
+    )
+    if sel:
+        out = out.isel(sel)
+    return out
 
 
 def _predict_onnx(ds, onnx_model, vars_):
@@ -172,9 +183,16 @@ def full_prediction(
     ctype = predict_cloud_type(prepped)
     cheight = predict_cloud_height(prepped, cmask, ctype)
     cghi = predict_ghi(prepped, cmask, ctype, cheight)
-    out = prepped.assign(
+    out = restricted.assign(
         {cmask.name: cmask, ctype.name: ctype, cheight.name: cheight, cghi.name: cghi}
     )
+    drop_vars = [f"CMI_C{c:02d}" for c in range(1, 17)] + [
+        f"DQF_CMI_C{c:02d}" for c in range(1, 17)
+    ]
+    out = out.drop(drop_vars)
+    nvars = {var: prepped[var] for var in prepped.data_vars if var not in drop_vars}
+    out = out.assign(nvars)
+    out.attrs["datasets"] += [str(combined_path.absolute())]
     mean_time = pd.Timestamp(prepped.erebos.mean_time)
     if nc_dir is not None:
         ncpath = nc_dir / mean_time.strftime(
@@ -196,3 +214,4 @@ def full_prediction(
         else:
             out.erebos.to_zarr(zarrpath)
     inp.close()
+    return out
