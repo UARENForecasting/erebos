@@ -72,11 +72,9 @@ def _generate_combined(key, bucket, request):
     headers = {"content-type": "application/json"}
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
-    requests.post(
-        request.url_for("process_combined_file"),
-        json={"path": str(final_path)},
-        headers=headers,
-    )
+    url = request.url_for("process_combined_file")
+    logger.info("Posting %s to %s", final_path, url)
+    requests.post(url, json={"path": str(final_path)}, headers=headers)
 
 
 @app.post("/process/s3file")
