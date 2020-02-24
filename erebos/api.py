@@ -80,7 +80,6 @@ def _generate_combined(key, bucket, request):
 def process_s3_file(
     sns_message: SNSMessage, request: Request, background_tasks: BackgroundTasks
 ):
-    breakpoint()
     if sns_message.Type == "SubscriptionConfirmation":
         requests.get(sns_message.SubscribeURL)
         return
