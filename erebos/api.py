@@ -1,7 +1,7 @@
 import datetime as dt
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -53,7 +53,7 @@ def process_combined_file(newfile: NewFile, request: Request):
 
 
 class SNSMessage(BaseModel):
-    Message: Json
+    Message: Union[Json, str]
     MessageId: str
     Signature: str
     SignatureVersion: str
@@ -83,11 +83,12 @@ def _generate_combined(key, bucket, request):
 def process_s3_file(
     sns_message: SNSMessage, request: Request, background_tasks: BackgroundTasks
 ):
-    if request.headers.get("x-amz-sns-message-type", "") == "SubscriptionConfirmation":
-        requests.get(request.SubscribeURL)
+    if sns_message.Type == "SubscriptionConfirmation":
+        requests.get(sns_message.SubscribeURL)
+        return
 
     rec = sns_message.Message
-    logger.info("SNS Message is: %s", rec)
+    logger.debug("SNS Message is: %s", rec)
     for record in rec["Records"]:
         bucket = record["s3"]["bucket"]["name"]
         key = record["s3"]["object"]["key"]
