@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r build/requirements.txt \
     && pip install build/. \
     && rm -rf build \
     && chown -R 1001:0 /opt/app-root
-
+EXPOSE 8000
 USER 1001
 
 CMD ["/opt/app-root/bin/erebos"]
