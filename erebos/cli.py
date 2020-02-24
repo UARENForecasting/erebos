@@ -142,13 +142,14 @@ class PathParamType(click.Path):
 @set_log_level
 @click.option("--s3-prefix", default="ABI-L2-MCMIPC", help="Prefix of S3 files")
 @click.option("--overwrite", default=False, type=bool, help="Overwrite existing files")
+@click.option("--callback-url", help="URL to post finish file path to")
 @click.argument("sqs_url")
 @click.argument(
     "save_directory",
     type=PathParamType(exists=True, writable=True, resolve_path=True, file_okay=False),
 )
 def create_multichannel_files(
-    sqs_url, save_directory, s3_prefix, overwrite, cron, cron_tz
+    sqs_url, save_directory, s3_prefix, overwrite, callback_url, cron, cron_tz
 ):
     """
     Process new files in SQS_URL and save the high-res combined NetCDF
@@ -162,6 +163,7 @@ def create_multichannel_files(
         save_directory,
         overwrite,
         s3_prefix,
+        callback_url,
         cron=cron,
         cron_tz=cron_tz,
     )
