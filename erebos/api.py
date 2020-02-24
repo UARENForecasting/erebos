@@ -20,11 +20,11 @@ from erebos.custom_multichannel_generation import generate_combined_file
 app = FastAPI()
 logger = logging.getLogger(__name__)
 config = Config(".env")
-ZARR_DIR = config(
-    "ZARR_DIR", cast=Path, default="/home/alorenzo/git_repos/erebos-crap/nn/npr/zarr/"
-)
+ZARR_DIR = config("ZARR_DIR", cast=Path, default="/d4/uaren/goes/G16/erebos/zarr/")
 S3_PREFIX = config("S3_PREFIX", default="ABI-L2-MCMIPC")
-MULTI_DIR = config("MULTI_DIR", cast=Path, default="/storage/projects/goes_alg/multi/")
+MULTI_DIR = config(
+    "MULTI_DIR", cast=Path, default="/d4/uaren/goes/G16/multichannel/1km"
+)
 logger.setLevel(config("LOG_LEVEL", default="INFO"))
 
 
