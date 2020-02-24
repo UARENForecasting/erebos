@@ -77,7 +77,7 @@ class SNSMessage(BaseModel):
 
 def _generate_combined(key, bucket, request):
     final_path = generate_combined_file(key, MULTI_DIR, bucket, overwrite=False)
-    headers = {"content-type": "subapilication/json"}
+    headers = {"content-type": "application/json"}
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
     url = request.url_for("process_combined_file")

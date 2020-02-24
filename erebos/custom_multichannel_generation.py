@@ -183,7 +183,11 @@ def generate_combined_file(
         logger.info("File already exists at %s, skipping", final_path)
         return final_path
     tmpdir = tempfile.TemporaryDirectory()
-    paths = download_files(mcmip_file, bucket, Path(tmpdir.name))
+    try:
+        paths = download_files(mcmip_file, bucket, Path(tmpdir.name))
+    except KeyError:
+        logger.warning("Some files missing, try again later...")
+        return None
     logger.debug("Prepping file based on channel %s", base_chan)
     with xr.open_dataset(paths.pop(base_chan), engine="h5netcdf") as ds:
         out = prep_first_file(ds, base_chan)
@@ -227,6 +231,7 @@ def get_sqs_keys(sqs_url, s3_prefix):
             # is complete
             with ThreadPoolExecutor() as exc:
                 data = threading.local()
+                data.success = True
                 data.stop = False
                 fut = exc.submit(_update_visibility, message, 30, data)
                 sns_msg = json.loads(message.body)
@@ -235,19 +240,25 @@ def get_sqs_keys(sqs_url, s3_prefix):
                     bucket = record["s3"]["bucket"]["name"]
                     key = record["s3"]["object"]["key"]
                     if key.startswith(s3_prefix):
-                        yield (bucket, key)
+                        yield (bucket, key, data)
                 data.stop = True
                 logger.debug("stopping message visibility update")
                 fut.cancel()
-            message.delete()
-            logger.debug("message deleted")
+                if data.success:
+                    message.delete()
+                    logger.debug("message deleted")
+                else:
+                    logger.info("Keeping message in queue")
         messages = q.receive_messages(MaxNumberOfMessages=10)
 
 
 def get_process_and_save(
     sqs_url, out_dir, overwrite, s3_prefix="ABI-L2-MCMIPC", callback_url=None
 ):
-    for bucket, key in get_sqs_keys(sqs_url, s3_prefix):
+    for bucket, key, comm in get_sqs_keys(sqs_url, s3_prefix):
         final_path = generate_combined_file(key, out_dir, bucket, overwrite=overwrite)
+        if final_path is None:
+            comm.success = False
+            continue
         if callback_url is not None:
             requests.post(callback_url, json={"path": str(final_path)})
