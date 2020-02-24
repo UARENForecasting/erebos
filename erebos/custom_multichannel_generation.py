@@ -180,7 +180,7 @@ def generate_combined_file(
     final_path = make_out_path(mcmip_file, out_dir)
     if not overwrite and final_path.exists():
         logger.info("File already exists at %s, skipping", final_path)
-        return
+        return final_path
     tmpdir = tempfile.TemporaryDirectory()
     paths = download_files(mcmip_file, bucket, Path(tmpdir.name))
     logger.debug("Prepping file based on channel %s", base_chan)
@@ -207,6 +207,7 @@ def generate_combined_file(
     out.close()
     tmpdir.cleanup()
     logger.debug("Done saving file")
+    return final_path
 
 
 def _update_visibility(message, timeout, local):
