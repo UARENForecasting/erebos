@@ -56,8 +56,10 @@ class NewFile(BaseModel):
 
 
 @subapi.post("/process/ghiprediction")
-def process_combined_file(newfile: NewFile, request: Request):
-    predict.full_prediction(newfile.path, zarr_dir=ZARR_DIR)
+def process_combined_file(
+    newfile: NewFile, request: Request, background_tasks: BackgroundTasks
+):
+    background_tasks.add_task(predict.full_prediction, newfile.path, zarr_dir=ZARR_DIR)
 
 
 class SNSMessage(BaseModel):
@@ -77,6 +79,8 @@ class SNSMessage(BaseModel):
 
 def _generate_combined(key, bucket, request):
     final_path = generate_combined_file(key, MULTI_DIR, bucket, overwrite=False)
+    if final_path is None:
+        return
     headers = {"content-type": "application/json"}
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
