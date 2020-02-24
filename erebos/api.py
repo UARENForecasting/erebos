@@ -59,7 +59,6 @@ def get_series(variable: str, run_date: str, lon: float, lat: float):
         raise HTTPException(status_code=404, detail=f"No variable {variable} in file")
     data = zds.erebos.select_nearest(lon, lat)[variable].isel(z=0).load()
     ser = data.to_dataframe()[variable].tz_localize("UTC").sort_index()
-    ser.iloc[-1] = None
     ser = ser.round(decimals=1).fillna(-999)
     out = {
         "variable": variable,
