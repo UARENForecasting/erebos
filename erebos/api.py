@@ -1,7 +1,8 @@
 import datetime as dt
+from decimal import Decimal
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, Dict
 
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -12,6 +13,7 @@ from starlette.requests import Request
 import xarray as xr
 
 
+from erebos import __version__
 import erebos.adapters  # NOQA
 from erebos.ml_models import predict
 from erebos.custom_multichannel_generation import generate_combined_file
@@ -36,7 +38,17 @@ async def ping(request: Request):
     return "pong"
 
 
-@subapi.get("/series/{variable}")
+class SeriesResponse(BaseModel):
+    version: str = __version__
+    lon: float
+    lat: float
+    run_date: dt.date
+    variable: str
+    nan_value: int = -999
+    results: Dict[dt.datetime, Decimal]
+
+
+@subapi.get("/series/{variable}", response_model=SeriesResponse)
 def get_series(variable: str, run_date: str, lon: float, lat: float):
     run_date = dt.date.fromisoformat(run_date)
     path = ZARR_DIR / run_date.strftime("%Y/%m/%d")
@@ -46,9 +58,17 @@ def get_series(variable: str, run_date: str, lon: float, lat: float):
     if variable not in zds:
         raise HTTPException(status_code=404, detail=f"No variable {variable} in file")
     data = zds.erebos.select_nearest(lon, lat)[variable].isel(z=0).load()
-    df = data.to_dataframe()[[variable]].tz_localize("UTC").sort_index()
-    df.index.name = "time"
-    return df.to_dict()
+    ser = data.to_dataframe()[variable].tz_localize("UTC").sort_index()
+    ser.iloc[-1] = None
+    ser = ser.round(decimals=1).fillna(-999)
+    out = {
+        "variable": variable,
+        "run_date": run_date,
+        "lat": lat,
+        "lon": lon,
+        "results": ser,
+    }
+    return out
 
 
 class NewFile(BaseModel):
