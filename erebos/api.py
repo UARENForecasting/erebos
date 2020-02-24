@@ -16,10 +16,9 @@ import erebos.adapters  # NOQA
 from erebos.ml_models import predict
 from erebos.custom_multichannel_generation import generate_combined_file
 
-
-app = FastAPI()
-logger = logging.getLogger(__name__)
 config = Config(".env")
+app = FastAPI(openapi_prefix="erebos")
+logger = logging.getLogger(__name__)
 ZARR_DIR = config("ZARR_DIR", cast=Path, default="/d4/uaren/goes/G16/erebos/zarr/")
 S3_PREFIX = config("S3_PREFIX", default="ABI-L2-MCMIPC")
 MULTI_DIR = config(
@@ -28,7 +27,7 @@ MULTI_DIR = config(
 logger.setLevel(config("LOG_LEVEL", default="INFO"))
 
 
-@app.get("/series/{variable}")
+@app.get("/erebos/series/{variable}")
 def get_series(variable: str, run_date: str, lon: float, lat: float):
     run_date = dt.date.fromisoformat(run_date)
     path = ZARR_DIR / run_date.strftime("%Y/%m/%d")
@@ -47,7 +46,7 @@ class NewFile(BaseModel):
     path: FilePath
 
 
-@app.post("/process/ghiprediction")
+@app.post("/erebos/process/ghiprediction")
 def process_combined_file(newfile: NewFile, request: Request):
     predict.full_prediction(newfile.path, zarr_dir=ZARR_DIR)
 
@@ -77,10 +76,11 @@ def _generate_combined(key, bucket, request):
     requests.post(url, json={"path": str(final_path)}, headers=headers)
 
 
-@app.post("/process/s3file")
+@app.post("/erebos/process/s3file")
 def process_s3_file(
     sns_message: SNSMessage, request: Request, background_tasks: BackgroundTasks
 ):
+    breakpoint()
     if sns_message.Type == "SubscriptionConfirmation":
         requests.get(sns_message.SubscribeURL)
         return
