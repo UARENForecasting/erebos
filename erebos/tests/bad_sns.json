@@ -1,0 +1,12 @@
+{
+  "Type" : "Notification",
+  "MessageId" : "aee5932b-c339-55a2-b4cd-c5e7386eda21",
+  "TopicArn" : "arn:aws:sns:us-east-1:123901341784:NewGOES16Object",
+  "Subject" : "Amazon S3 Notification",
+  "Message" : "{\"Records\":[{\"eventVersion\":\"2.1\",\"eventSource\":\"aws:s3\",\"awsRegion\":\"us-east-1\",\"eventTime\":\"2020-02-23T22:13:37.491Z\",\"eventName\":\"ObjectCreated:Put\",\"userIdentity\":{\"principalId\":\"AWS:AIDAJIC4U5R2TXT7T3MI6\"},\"requestParameters\":{\"sourceIPAddress\":\"198.85.226.62\"},\"responseElements\":{\"x-amz-request-id\":\"D8EE045AA4FEF9B3\",\"x-amz-id-2\":\"y8KuTIL719pY2+1+IzVUqNaoAeEo4qJMFL+0g+9A7juKpkDpSBbr6n7uaBvJCw6rUvnlujb/lKanazzn77zb84VUSmsCdrrA\"},\"s3\":{\"s3SchemaVersion\":\"1.0\",\"configurationId\":\"NewObject\",\"bucket\":{\"name\":\"noaa-goes16\",\"ownerIdentity\":{\"principalId\":\"A2AJV00K47QOI1\"},\"arn\":\"arn:aws:s3:::noaa-goes16\"},\"object\":{\"key\":\"ABI-L2-CMIPM/2020/054/22/OR_ABI-L2-CMIPM1-M6C07_G16_s20200542213235_e20200542213304_c20200542213356.nc\",\"size\":349346,\"eTag\":\"cf0fd4190acd3e4ce402ad278780512c\",\"sequencer\":\"005E52F9164CEA0ED5\"}}}]}",
+  "Timestamp" : "2020-02-23T22:13:43.395Z",
+  "SignatureVersion" : "1",
+  "Signature" : "YgUIpnOtjqSR2RwTjeoloss9bM4UGibrIEr6zuPGcNelBk4e8SId+k8Qxh/iwki7nexRrnVdxXYhXRnTFeL3jpNlWuCo4/P+M1UV76qeu4lC/KljKzi6bPW6khtS+YU5Joqwvpn5EWmDf0kVcQ7CfI1F7V8YyDU1yjtl7ovh9rBzTSjan/Ib0tPDir8h3f0qrZGZ41qAu8jWofaMjxCEMlLNWo/bILTnPrlsjEIRyQeqqE11Ibk2GBZc9//NG8zUW4V+DT/osAX/mGtCH3hyo3ZiWzD1vyNBS7N3ER6ddAs7IpKWiPUyH9xPUZc8CDR1C8R3je5jSk4Ifiom1a+Xnw==",
+  "SigningCertURL" : "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-a86cb10b4e1f29c941702d737128f7b6.pem",
+  "UnsubscribeURL" : "https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:123901341784:NewGOES16Object:cc538f2c-daf6-4443-968d-ebb6b543c072"
+}
