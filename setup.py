@@ -13,4 +13,5 @@ setup(
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
     entry_points={"console_scripts": ["erebos=erebos.cli:cli"]},
+    include_package_data=True,
 )
