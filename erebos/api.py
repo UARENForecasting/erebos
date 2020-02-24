@@ -17,7 +17,7 @@ from erebos.ml_models import predict
 from erebos.custom_multichannel_generation import generate_combined_file
 
 config = Config(".env")
-app = FastAPI(openapi_prefix="erebos")
+sub = config("PROXY", default="/erebos")
 logger = logging.getLogger(__name__)
 ZARR_DIR = config("ZARR_DIR", cast=Path, default="/d4/uaren/goes/G16/erebos/zarr/")
 S3_PREFIX = config("S3_PREFIX", default="ABI-L2-MCMIPC")
@@ -27,7 +27,16 @@ MULTI_DIR = config(
 logger.setLevel(config("LOG_LEVEL", default="INFO"))
 
 
-@app.get("/erebos/series/{variable}")
+app = FastAPI()
+subapi = FastAPI(openapi_prefix=sub)
+
+
+@app.get("/ping")
+async def ping(request: Request):
+    return "pong"
+
+
+@subapi.get("/series/{variable}")
 def get_series(variable: str, run_date: str, lon: float, lat: float):
     run_date = dt.date.fromisoformat(run_date)
     path = ZARR_DIR / run_date.strftime("%Y/%m/%d")
@@ -46,7 +55,7 @@ class NewFile(BaseModel):
     path: FilePath
 
 
-@app.post("/erebos/process/ghiprediction")
+@subapi.post("/process/ghiprediction")
 def process_combined_file(newfile: NewFile, request: Request):
     predict.full_prediction(newfile.path, zarr_dir=ZARR_DIR)
 
@@ -68,7 +77,7 @@ class SNSMessage(BaseModel):
 
 def _generate_combined(key, bucket, request):
     final_path = generate_combined_file(key, MULTI_DIR, bucket, overwrite=False)
-    headers = {"content-type": "application/json"}
+    headers = {"content-type": "subapilication/json"}
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
     url = request.url_for("process_combined_file")
@@ -76,10 +85,11 @@ def _generate_combined(key, bucket, request):
     requests.post(url, json={"path": str(final_path)}, headers=headers)
 
 
-@app.post("/erebos/process/s3file")
+@subapi.post("/process/s3file")
 def process_s3_file(
     sns_message: SNSMessage, request: Request, background_tasks: BackgroundTasks
 ):
+
     if sns_message.Type == "SubscriptionConfirmation":
         requests.get(sns_message.SubscribeURL)
         return
@@ -91,3 +101,6 @@ def process_s3_file(
         key = record["s3"]["object"]["key"]
         if key.startswith(S3_PREFIX):
             background_tasks.add_task(_generate_combined, key, bucket, request)
+
+
+app.mount(sub, subapi)
