@@ -1,5 +1,7 @@
 import logging
 from pathlib import Path
+import tempfile
+import warnings
 
 
 import lightgbm
@@ -13,7 +15,7 @@ import erebos.adapters  # NOQA
 from erebos.adapters import goes
 
 
-logging = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def prepare_dataset(ds):
@@ -173,9 +175,7 @@ def predict_ghi(ds, cloud_mask=None, cloud_type=None, cloud_height=None):
     return da
 
 
-def full_prediction(
-    combined_path, nc_dir=None, zarr_dir=None, domain=(-115, -103, 30, 38)
-):
+def full_prediction(combined_path, domain=(-115, -103, 30, 38)):
     logging.info("Predicting quantities based on %s", combined_path)
     inp = xr.open_dataset(combined_path, engine="h5netcdf")
     restricted = goes.restrict_domain(inp, domain[:2], domain[2:])
@@ -194,25 +194,56 @@ def full_prediction(
     nvars = {var: prepped[var] for var in prepped.data_vars if var not in drop_vars}
     out = out.assign(nvars)
     out.attrs["datasets"] = str(combined_path.absolute())
-    mean_time = pd.Timestamp(prepped.erebos.mean_time)
-    if nc_dir is not None:
-        ncpath = nc_dir / mean_time.strftime(
-            "%Y/%m/%d/erebos_prediction_%Y%m%dT%H%M%SZ.nc"
-        )
-        ncpath.parent.mkdir(parents=True, exist_ok=True)
-        logging.info("Saving NetCDF to %s", ncpath)
-        out.erebos.to_netcdf(ncpath)
-    if zarr_dir is not None:
-        zarrpath = zarr_dir / mean_time.strftime("%Y/%m/%d")
-        zarrpath.mkdir(parents=True, exist_ok=True)
-        logging.info("Saving zarr to %s", zarrpath)
-        if (zarrpath / ".zmetadata").exists():
-            root = xr.open_zarr(str(zarrpath))
-            if out.erebos.t.data in root.t.data:
-                logging.warning("Time already present in zarr group, not saving")
-            else:
-                out.erebos.to_zarr(zarrpath, append_dim="t")
-        else:
-            out.erebos.to_zarr(zarrpath)
+    out = out.load()
     inp.close()
     return out
+
+
+def full_prediction_to_zarr(combined_path, zarr_dir, domain=(-115, -103, 30, 38)):
+    with xr.open_dataset(combined_path, engine="h5netcdf") as ds:
+        mean_time = pd.Timestamp(ds.erebos.mean_time)
+        tt = ds.erebos.t.data
+    zarrpath = zarr_dir / mean_time.strftime("%Y/%m/%d")
+    if zarrpath.exists():
+        with xr.open_zarr(str(zarrpath)) as zds:
+            if tt in zds.t.data:
+                logger.warning("Time already present in zarr group, not saving")
+                return
+    out = full_prediction(combined_path, domain=domain)
+    logger.info("Saving zarr to %s", zarrpath)
+
+    if zarrpath.exists():
+        out.erebos.to_zarr(zarrpath, append_dim="t")
+    else:
+        zarrpath.mkdir(parents=True, exist_ok=True)
+        out.erebos.to_zarr(zarrpath)
+    out.close()
+    return zarrpath
+
+
+def full_prediction_to_nc(
+    combined_path, nc_dir, domain=(-115, -103, 30, 38), overwrite=False
+):
+    with xr.open_dataset(combined_path, engine="h5netcdf") as ds:
+        mean_time = pd.Timestamp(ds.erebos.mean_time)
+
+    ncpath = nc_dir / mean_time.strftime("%Y/%m/%d/erebos_prediction_%Y%m%dT%H%M%SZ.nc")
+    if ncpath.exists() and not overwrite:
+        logger.warning("NetCDF %s exists and not overwriting", ncpath.absolute())
+        return
+    ncpath.parent.mkdir(parents=True, exist_ok=True)
+    out = full_prediction(combined_path, domain=domain)
+    logger.info("Saving NetCDF to %s", ncpath)
+    tmppath = Path(tempfile.mkstemp(dir=ncpath.parent, prefix=".", suffix=".nc")[1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            out.to_netcdf(tmppath, engine="h5netcdf")
+        except Exception:
+            tmppath.unlink()
+            raise
+        else:
+            tmppath.rename(ncpath)
+    ncpath.chmod(0o664)
+    out.close()
+    return ncpath

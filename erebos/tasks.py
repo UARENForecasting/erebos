@@ -49,7 +49,7 @@ logger.setLevel(config.LOG_LEVEL)
 
 @dramatiq.actor(priority=HIGH)
 def process_combined_file(combined_file_path):
-    predict.full_prediction(Path(combined_file_path), zarr_dir=config.ZARR_DIR)
+    predict.full_prediction_to_zarr(Path(combined_file_path), zarr_dir=config.ZARR_DIR)
 
 
 @dramatiq.actor(priority=MID)
