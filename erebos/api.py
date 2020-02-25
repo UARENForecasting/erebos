@@ -5,6 +5,7 @@ from typing import Optional, Union, Dict
 
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+import pandas as pd
 from pydantic import BaseModel, FilePath, Json
 from starlette.requests import Request
 import xarray as xr
@@ -37,13 +38,17 @@ class SeriesResponse(BaseModel):
     results: Dict[dt.datetime, Decimal]
 
 
-@subapi.get("/series/{variable}", response_model=SeriesResponse)
-def get_series(variable: str, run_date: str, lon: float, lat: float):
-    run_date = dt.date.fromisoformat(run_date)
+def _open_zds(run_date: dt.date):
     path = config.ZARR_DIR / run_date.strftime("%Y/%m/%d")
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"No data found for {run_date}")
     zds = xr.open_zarr(str(path), consolidated=True)
+    return zds
+
+
+@subapi.get("/series/{variable}", response_model=SeriesResponse)
+def get_series(variable: str, run_date: dt.date, lon: float, lat: float):
+    zds = _open_zds(run_date)
     if variable not in zds:
         raise HTTPException(status_code=404, detail=f"No variable {variable} in file")
     data = zds.erebos.select_nearest(lon, lat)[variable].isel(z=0).load()
@@ -57,6 +62,12 @@ def get_series(variable: str, run_date: str, lon: float, lat: float):
         "results": ser,
     }
     return out
+
+
+@subapi.get("/lastupdate")
+def get_last_update(run_date: dt.date):
+    zds = _open_zds(run_date)
+    return pd.Timestamp(zds.t.max().values, tz=zds.timezone)
 
 
 class NewFile(BaseModel):
