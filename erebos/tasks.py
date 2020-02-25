@@ -59,7 +59,7 @@ def generate_combined_file(key, bucket):
     process_combined_file.send(str(final_path))
 
 
-@dramatiq.actor(priority=MID, periodic=cron("*/5 * * * *"))
+@dramatiq.actor(priority=MID, periodic=cron("* * * * *"))
 def periodically_generate_combined_files():
     custom_multichannel_generation.get_process_and_save(
         config.SQS_URL,
