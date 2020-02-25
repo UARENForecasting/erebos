@@ -1,36 +1,25 @@
 import datetime as dt
 from decimal import Decimal
 import logging
-from pathlib import Path
 from typing import Optional, Union, Dict
 
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel, FilePath, Json
-import requests
-from starlette.config import Config
 from starlette.requests import Request
 import xarray as xr
 
 
-from erebos import __version__
+from erebos import __version__, tasks, config
 import erebos.adapters  # NOQA
-from erebos.ml_models import predict
-from erebos.custom_multichannel_generation import generate_combined_file
 
-config = Config(".env")
-sub = config("PROXY", default="/erebos")
+
 logger = logging.getLogger(__name__)
-ZARR_DIR = config("ZARR_DIR", cast=Path, default="/d4/uaren/goes/G16/erebos/zarr/")
-S3_PREFIX = config("S3_PREFIX", default="ABI-L2-MCMIPC")
-MULTI_DIR = config(
-    "MULTI_DIR", cast=Path, default="/d4/uaren/goes/G16/multichannel/1km"
-)
-logger.setLevel(config("LOG_LEVEL", default="INFO"))
+logger.setLevel(config.LOG_LEVEL)
 
 
 app = FastAPI()
-subapi = FastAPI(openapi_prefix=sub)
+subapi = FastAPI(openapi_prefix=config.PROXY)
 
 
 @app.get("/ping")
@@ -51,7 +40,7 @@ class SeriesResponse(BaseModel):
 @subapi.get("/series/{variable}", response_model=SeriesResponse)
 def get_series(variable: str, run_date: str, lon: float, lat: float):
     run_date = dt.date.fromisoformat(run_date)
-    path = ZARR_DIR / run_date.strftime("%Y/%m/%d")
+    path = config.ZARR_DIR / run_date.strftime("%Y/%m/%d")
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"No data found for {run_date}")
     zds = xr.open_zarr(str(path), consolidated=True)
@@ -78,7 +67,7 @@ class NewFile(BaseModel):
 def process_combined_file(
     newfile: NewFile, request: Request, background_tasks: BackgroundTasks
 ):
-    background_tasks.add_task(predict.full_prediction, newfile.path, zarr_dir=ZARR_DIR)
+    tasks.process_combined_file.send(str(newfile.path))
 
 
 class SNSMessage(BaseModel):
@@ -100,14 +89,13 @@ class SNSMessage(BaseModel):
 def process_s3_file(
     sns_message: SNSMessage, request: Request, background_tasks: BackgroundTasks
 ):
-    from erebos import tasks
     rec = sns_message.Message
     logger.debug("SNS Message is: %s", rec)
     for record in rec["Records"]:
         bucket = record["s3"]["bucket"]["name"]
         key = record["s3"]["object"]["key"]
-        if key.startswith(S3_PREFIX):
+        if key.startswith(config.S3_PREFIX):
             tasks.generate_combined_file.send(key, bucket)
 
 
-app.mount(sub, subapi)
+app.mount(config.PROXY, subapi)
