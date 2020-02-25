@@ -10,6 +10,7 @@ config = Config(".env")
 
 SENTRY_DSN = config("SENTRY_DSN", default=None)
 PROXY = config("PROXY", default="/erebos")
+DASHBOARD_PATH = config("DASHBOARD_PATH", default="/erebos/drama")
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 ZARR_DIR = config("ZARR_DIR", cast=Path, default="/d4/uaren/goes/G16/erebos/zarr/")
 S3_PREFIX = config("S3_PREFIX", default="ABI-L2-MCMIPC")
