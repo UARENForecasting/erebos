@@ -22,4 +22,4 @@ MEM_LIMIT = config("RSS_MEMORY_LIMIT", default=384.0, cast=float)
 
 
 if SENTRY_DSN is not None:
-    sentry_sdk.init(SENTRY_DSN, integrations=[sentry_dramatiq.DramatiqIntegration])
+    sentry_sdk.init(SENTRY_DSN, integrations=[sentry_dramatiq.DramatiqIntegration()])
