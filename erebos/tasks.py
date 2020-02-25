@@ -8,6 +8,7 @@ import signal
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
 from dramatiq_dashboard import DashboardApp
+from periodiq import PeriodiqMiddleware, cron
 
 
 from erebos import custom_multichannel_generation, config
@@ -37,6 +38,7 @@ class RestartMiddleware(dramatiq.Middleware):
 
 redis_broker = RedisBroker(host=config.REDIS_HOST, port=config.REDIS_PORT)
 redis_broker.add_middleware(RestartMiddleware(config.MEM_LIMIT))
+redis_broker.add_middleware(PeriodiqMiddleware(skip_delay=30))
 dramatiq.set_broker(redis_broker)
 dashboard_app = DashboardApp(broker=redis_broker, prefix=config.DASHBOARD_PATH)
 
@@ -55,3 +57,14 @@ def generate_combined_file(key, bucket):
         key, config.MULTI_DIR, bucket, overwrite=False
     )
     process_combined_file.send(str(final_path))
+
+
+@dramatiq.actor(priority=MID, periodic=cron("*/5 * * * *"))
+def periodically_generate_combined_files():
+    custom_multichannel_generation.get_process_and_save(
+        config.SQS_URL,
+        config.MULTI_DIR,
+        False,
+        config.S3_PREFIX,
+        callback=process_combined_file.send,
+    )
