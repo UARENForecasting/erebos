@@ -96,34 +96,18 @@ class SNSMessage(BaseModel):
     UnsubscribeURL: Optional[str]
 
 
-def _generate_combined(key, bucket, request):
-    final_path = generate_combined_file(key, MULTI_DIR, bucket, overwrite=False)
-    if final_path is None:
-        return
-    headers = {"content-type": "application/json"}
-    if "authorization" in request.headers:
-        headers["authorization"] = request.headers["authorization"]
-    url = request.url_for("process_combined_file")
-    logger.info("Posting %s to %s", final_path, url)
-    requests.post(url, json={"path": str(final_path)}, headers=headers)
-
-
 @subapi.post("/process/s3file")
 def process_s3_file(
     sns_message: SNSMessage, request: Request, background_tasks: BackgroundTasks
 ):
-
-    if sns_message.Type == "SubscriptionConfirmation":
-        requests.get(sns_message.SubscribeURL)
-        return
-
+    from erebos import tasks
     rec = sns_message.Message
     logger.debug("SNS Message is: %s", rec)
     for record in rec["Records"]:
         bucket = record["s3"]["bucket"]["name"]
         key = record["s3"]["object"]["key"]
         if key.startswith(S3_PREFIX):
-            background_tasks.add_task(_generate_combined, key, bucket, request)
+            tasks.generate_combined_file.send(key, bucket)
 
 
 app.mount(sub, subapi)
