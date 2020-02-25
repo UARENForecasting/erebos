@@ -84,9 +84,9 @@ def process_combined_file(
 class SNSMessage(BaseModel):
     Message: Union[Json, str]
     MessageId: str
-    Signature: str
-    SignatureVersion: str
-    SigningCertURL: str
+    Signature: Optional[str]
+    SignatureVersion: Optional[str]
+    SigningCertURL: Optional[str]
     Subject: Optional[str]
     SubscribeURL: Optional[str]
     Timestamp: dt.datetime

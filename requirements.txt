@@ -25,3 +25,6 @@ redis==3.4.1
 prometheus-client==0.7.1
 psutil==5.7.0
 sentry-dramatiq==0.3.1
+dramatiq-dashboard==0.2.2
+jinja2==2.11.1
+periodiq==0.12.1
