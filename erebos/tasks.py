@@ -56,7 +56,8 @@ def generate_combined_file(key, bucket):
     final_path = custom_multichannel_generation.generate_combined_file(
         key, config.MULTI_DIR, bucket, overwrite=False
     )
-    process_combined_file.send(str(final_path))
+    if final_path is not None:
+        process_combined_file.send(str(final_path))
 
 
 @dramatiq.actor(priority=MID, periodic=cron("* * * * *"))
