@@ -11,6 +11,7 @@ import time
 import click
 from croniter import croniter
 import pytz
+import requests
 
 
 from erebos import __version__
@@ -136,6 +137,10 @@ class PathParamType(click.Path):
         return Path(p)
 
 
+def _url_callback(callback_url, final_path):
+    requests.post(callback_url, json={"path": str(final_path)})
+
+
 @cli.command()
 @verbose
 @schedule_options
@@ -156,14 +161,13 @@ def create_multichannel_files(
     to SAVE_DIRECTORY
     """
     from erebos.custom_multichannel_generation import get_process_and_save
-
     run_loop(
         get_process_and_save,
         sqs_url,
         save_directory,
         overwrite,
         s3_prefix,
-        callback_url,
+        partial(_url_callback, callback_url),
         cron=cron,
         cron_tz=cron_tz,
     )

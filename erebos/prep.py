@@ -17,34 +17,7 @@ import xarray as xr
 
 from erebos import utils, __version__
 from erebos.adapters.goes import GOESFilename
-
-
-def get_s3_keys(bucket, prefix=""):
-    """
-    Generate the keys in an S3 bucket.
-
-    :param bucket: Name of the S3 bucket.
-    :param prefix: Only fetch keys that start with this prefix (optional).
-    """
-    s3 = boto3.client("s3")
-    kwargs = {"Bucket": bucket}
-
-    if isinstance(prefix, str):
-        kwargs["Prefix"] = prefix
-
-    while True:
-        resp = s3.list_objects_v2(**kwargs)
-        if resp["KeyCount"] == 0:
-            break
-        for obj in resp["Contents"]:
-            key = obj["Key"]
-            if key.startswith(prefix):
-                yield key
-
-        try:
-            kwargs["ContinuationToken"] = resp["NextContinuationToken"]
-        except KeyError:
-            break
+from erebos.utils import get_s3_keys
 
 
 def get_closest_s3_key(

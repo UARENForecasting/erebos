@@ -14,6 +14,7 @@ DASHBOARD_PATH = config("DASHBOARD_PATH", default="/erebos/drama")
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 SQS_URL = config("SQS_URL", default="")
 ZARR_DIR = config("ZARR_DIR", cast=Path, default="/d4/uaren/goes/G16/erebos/zarr/")
+S3_BUCKET = config("S3_BUCKET", default='noaa-goes16')
 S3_PREFIX = config("S3_PREFIX", default="ABI-L2-MCMIPC")
 MULTI_DIR = config(
     "MULTI_DIR", cast=Path, default="/d4/uaren/goes/G16/multichannel/1km"

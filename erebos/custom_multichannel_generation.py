@@ -9,7 +9,6 @@ import threading
 
 
 import boto3
-import requests
 from scipy.ndimage import zoom
 import xarray as xr
 
@@ -253,8 +252,7 @@ def get_sqs_keys(sqs_url, s3_prefix):
 
 
 def get_process_and_save(
-    sqs_url, out_dir, overwrite, s3_prefix="ABI-L2-MCMIPC", callback=None,
-    callback_url=None
+    sqs_url, out_dir, overwrite, s3_prefix="ABI-L2-MCMIPC", callback=None
 ):
     for bucket, key, comm in get_sqs_keys(sqs_url, s3_prefix):
         final_path = generate_combined_file(key, out_dir, bucket, overwrite=overwrite)
@@ -263,5 +261,3 @@ def get_process_and_save(
             continue
         if callback is not None:
             callback(str(final_path))
-        if callback_url is not None:
-            requests.post(callback_url, json={"path": str(final_path)})

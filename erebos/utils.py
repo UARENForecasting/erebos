@@ -13,6 +13,9 @@ Satellite
         position   position
 """
 from dataclasses import dataclass
+
+
+import boto3
 import numpy as np
 from pvlib import spa
 
@@ -120,3 +123,31 @@ def get_solar_ecr_position(unixtime, lat, lon, delta_t=67.0):
     Y = R * np.sin(lat)
     Z = R * np.cos(lat) * np.cos(lon)
     return RotatedECRPosition(X, Y, Z)
+
+
+def get_s3_keys(bucket, prefix=""):
+    """
+    Generate the keys in an S3 bucket.
+
+    :param bucket: Name of the S3 bucket.
+    :param prefix: Only fetch keys that start with this prefix (optional).
+    """
+    s3 = boto3.client("s3")
+    kwargs = {"Bucket": bucket}
+
+    if isinstance(prefix, str):
+        kwargs["Prefix"] = prefix
+
+    while True:
+        resp = s3.list_objects_v2(**kwargs)
+        if resp["KeyCount"] == 0:
+            break
+        for obj in resp["Contents"]:
+            key = obj["Key"]
+            if key.startswith(prefix):
+                yield key
+
+        try:
+            kwargs["ContinuationToken"] = resp["NextContinuationToken"]
+        except KeyError:
+            break
