@@ -7,6 +7,7 @@ from typing import Optional, Union, Dict
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 import pandas as pd
 from pydantic import BaseModel, FilePath, Json
+from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 from starlette.requests import Request
 import xarray as xr
 
@@ -20,6 +21,7 @@ logger.setLevel(config.LOG_LEVEL)
 
 
 app = FastAPI()
+SentryAsgiMiddleware(app)
 subapi = FastAPI(openapi_prefix=config.PROXY)
 
 
