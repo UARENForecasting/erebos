@@ -1,14 +1,21 @@
+import asyncio
 import datetime as dt
 from decimal import Decimal
 import logging
+import os
 from typing import Optional, Union, Dict
 
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 import pandas as pd
+import psutil
 from pydantic import BaseModel, FilePath, Json
+from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 from starlette.requests import Request
+from starlette_prometheus import PrometheusMiddleware, metrics
 import xarray as xr
+from uvicorn.main import Server as UvicornServer
+from uvicorn.workers import UvicornWorker
 
 
 from erebos import __version__, tasks, config
@@ -20,6 +27,9 @@ logger.setLevel(config.LOG_LEVEL)
 
 
 app = FastAPI()
+SentryAsgiMiddleware(app)
+app.add_middleware(PrometheusMiddleware)
+app.add_route("/metrics/", metrics)
 subapi = FastAPI(openapi_prefix=config.PROXY)
 
 
@@ -53,7 +63,8 @@ def get_series(variable: str, run_date: dt.date, lon: float, lat: float):
         raise HTTPException(status_code=404, detail=f"No variable {variable} in file")
     data = zds.erebos.select_nearest(lon, lat)[variable].isel(z=0).load()
     ser = data.to_dataframe()[variable].tz_localize("UTC").sort_index()
-    ser = ser.round(decimals=1).fillna(-999).drop_duplicates()
+    ser = ser.round(decimals=1).fillna(-999)
+    ser = ser[~ser.index.duplicated()]
     out = {
         "variable": variable,
         "run_date": run_date,
@@ -110,3 +121,26 @@ def process_s3_file(
 
 
 app.mount(config.PROXY, subapi)
+
+
+class Server(UvicornServer):
+    async def on_tick(self, counter):
+        if counter % 100 == 0 and counter > 0:  # once every 10 seconds
+            proc = psutil.Process(os.getpid())
+            rss = proc.memory_info().rss
+            for child in proc.children():
+                rss += child.memory_info().rss
+            rss_mb = rss / 1024 ** 2
+            logger.debug("Process group currently using %0.2f MiB RSS", rss_mb)
+            if rss_mb > config.MEM_LIMIT:
+                logger.info("Restarting workers with RSS of %0.2f MiB RSS...", rss_mb)
+                self.should_exit = True
+        return await super().on_tick(counter)
+
+
+class Worker(UvicornWorker):
+    def run(self):
+        self.config.app = self.wsgi
+        server = Server(config=self.config)
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(server.serve(sockets=self.sockets))
