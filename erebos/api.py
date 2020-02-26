@@ -9,6 +9,7 @@ import pandas as pd
 from pydantic import BaseModel, FilePath, Json
 from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 from starlette.requests import Request
+from starlette_prometheus import PrometheusMiddleware, metrics
 import xarray as xr
 
 
@@ -22,6 +23,8 @@ logger.setLevel(config.LOG_LEVEL)
 
 app = FastAPI()
 SentryAsgiMiddleware(app)
+app.add_middleware(PrometheusMiddleware)
+app.add_route("/metrics/", metrics)
 subapi = FastAPI(openapi_prefix=config.PROXY)
 
 

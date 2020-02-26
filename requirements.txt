@@ -28,3 +28,4 @@ sentry-dramatiq==0.3.1
 dramatiq-dashboard==0.2.2
 jinja2==2.11.1
 periodiq==0.12.1
+starlette-prometheus==0.5.0
