@@ -7,6 +7,7 @@ import signal
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
+from dramatiq.middleware import CurrentMessage, Retries
 from dramatiq_dashboard import DashboardApp
 import pandas as pd
 from periodiq import PeriodiqMiddleware, cron
@@ -38,9 +39,24 @@ class RestartMiddleware(dramatiq.Middleware):
             os.kill(os.getppid(), signal.SIGHUP)
 
 
+class RetryException(Exception):
+    pass
+
+
+class RetryWOException(Retries):
+    def after_process_message(self, broker, message, *, result=None, exception=None):
+        if hasattr(message, "retry") and message.retry and exception is None:
+            exception = RetryException()
+        super().after_process_message(
+            broker, message, result=result, exception=exception
+        )
+
+
 redis_broker = RedisBroker(host=config.REDIS_HOST, port=config.REDIS_PORT)
 redis_broker.add_middleware(RestartMiddleware(config.MEM_LIMIT))
 redis_broker.add_middleware(PeriodiqMiddleware(skip_delay=30))
+redis_broker.add_middleware(CurrentMessage())
+redis_broker.add_middleware(RetryWOException())
 dramatiq.set_broker(redis_broker)
 dashboard_app = DashboardApp(broker=redis_broker, prefix=config.DASHBOARD_PATH)
 
@@ -63,6 +79,10 @@ def generate_combined_file(key, bucket, async_process=True):
             process_combined_file.send(str(final_path))
         else:
             process_combined_file(final_path)
+    else:
+        logger.warning("Rescheduling processing of %s", key)
+        msg = CurrentMessage.get_current_message()
+        msg.retry = True
 
 
 @dramatiq.actor(priority=LOW, periodic=cron("* * * * *"))
@@ -78,27 +98,23 @@ def periodically_generate_combined_files():
 
 @dramatiq.actor(priority=LOW, periodic=cron("15 0 * * *"))
 def find_missing_combined_files():
-    start = pd.Timestamp.utcnow().floor('1d') - pd.Timedelta('1d')
+    start = pd.Timestamp.utcnow().floor("1d") - pd.Timedelta("1d")
     prefix = config.S3_PREFIX + start.strftime("/%Y/%j/%H/")
     logger.debug("Prefix is %s", prefix)
     for key in utils.get_s3_keys(config.S3_BUCKET, prefix):
-        save_path = custom_multichannel_generation.make_out_path(
-            key, config.MULTI_DIR
-        )
+        save_path = custom_multichannel_generation.make_out_path(key, config.MULTI_DIR)
         logger.debug("S3 key is %s and save path is %s", key, save_path)
         if not save_path.exists():
-            logger.info(
-                "Archive is missing file %s, making job to retrieve", save_path
-            )
+            logger.info("Archive is missing file %s, making job to retrieve", save_path)
             generate_combined_file.send(key, config.S3_BUCKET, False)
 
 
 @dramatiq.actor(priority=LOW, periodic=cron("10 * * * *"))
 def find_missing_zarr_files():
     now = pd.Timestamp.utcnow()
-    for multi in (Path(config.MULTI_DIR) / now.strftime('%Y/%m/%d')).glob("*.nc"):
+    for multi in (Path(config.MULTI_DIR) / now.strftime("%Y/%m/%d")).glob("erebos*.nc"):
         zarrpath = Path(config.ZARR_DIR) / multi.parent.relative_to(config.MULTI_DIR)
-        logger.debug('Checking zarr dataset at %s for data from %s', zarrpath, multi)
+        logger.debug("Checking zarr dataset at %s for data from %s", zarrpath, multi)
         if not zarrpath.exists():
             logger.info(
                 "No zarr dir (%s) found for %s, making zarr dataset", zarrpath, multi
