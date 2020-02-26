@@ -10,6 +10,7 @@ from dramatiq.brokers.redis import RedisBroker
 from dramatiq_dashboard import DashboardApp
 import pandas as pd
 from periodiq import PeriodiqMiddleware, cron
+import xarray as xr
 
 
 from erebos import custom_multichannel_generation, config, utils
@@ -81,7 +82,7 @@ def find_missing_combined_files():
     for lookback in range(2):
         start = now - pd.Timedelta(hours=lookback)
         prefix = config.S3_PREFIX + start.strftime("/%Y/%j/%H/")
-        logger.debug('Prefix is %s', prefix)
+        logger.debug("Prefix is %s", prefix)
         for key in utils.get_s3_keys(config.S3_BUCKET, prefix):
             save_path = custom_multichannel_generation.make_out_path(
                 key, config.MULTI_DIR
@@ -92,3 +93,33 @@ def find_missing_combined_files():
                     "Archive is missing file %s, making job to retrieve", save_path
                 )
                 generate_combined_file.send(key, config.S3_BUCKET, False)
+
+
+@dramatiq.actor(priority=LOW, periodic=cron("10 * * * *"))
+def find_missing_zarr_files():
+    now = pd.Timestamp.utcnow()
+    for multi in (Path(config.MULTI_DIR) / now.strftime('%Y/%m/%d')).glob("*.nc"):
+        zarrpath = Path(config.ZARR_DIR) / multi.parent.relative_to(config.MULTI_DIR)
+        logger.debug('Checking zarr dataset at %s for data from %s', zarrpath, multi)
+        if not zarrpath.exists():
+            logger.info(
+                "No zarr dir (%s) found for %s, making zarr dataset", zarrpath, multi
+            )
+            process_combined_file.send(str(multi))
+        else:
+            try:
+                zds = xr.open_zarr(str(zarrpath))
+            except Exception:
+                logger.error("Could not open zarr dataset at %s ", zarrpath)
+                continue
+            try:
+                t = pd.Timestamp(str(multi.stem).split("_")[-1])
+            except Exception:
+                breakpoint()
+                logger.error("Could not parse timestamp from %s", multi)
+                continue
+            if t not in zds.t.data:
+                logger.info(
+                    "Adding data from %s to zarr dataset at %s", multi, zarrpath
+                )
+                process_combined_file.send(str(multi))
