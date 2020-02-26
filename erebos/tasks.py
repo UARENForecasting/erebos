@@ -113,7 +113,6 @@ def find_missing_zarr_files():
             try:
                 t = pd.Timestamp(str(multi.stem).split("_")[-1])
             except Exception:
-                breakpoint()
                 logger.error("Could not parse timestamp from %s", multi)
                 continue
             if t not in zds.t.data:
