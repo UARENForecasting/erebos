@@ -95,7 +95,7 @@ def find_missing_combined_files():
 @dramatiq.actor(priority=LOW, periodic=cron("10 * * * *"))
 def find_missing_zarr_files():
     now = pd.Timestamp.utcnow()
-    for multi in (Path(config.MULTI_DIR) / now.strftime("%Y/%m/%d")).glob("*.nc"):
+    for multi in (Path(config.MULTI_DIR) / now.strftime("%Y/%m/%d")).glob("erebos*.nc"):
         zarrpath = Path(config.ZARR_DIR) / multi.parent.relative_to(config.MULTI_DIR)
         logger.debug("Checking zarr dataset at %s for data from %s", zarrpath, multi)
         if not zarrpath.exists():
