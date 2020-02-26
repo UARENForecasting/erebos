@@ -76,23 +76,21 @@ def periodically_generate_combined_files():
     )
 
 
-@dramatiq.actor(priority=LOW, periodic=cron("*/15 * * * *"))
+@dramatiq.actor(priority=LOW, periodic=cron("15 0 * * *"))
 def find_missing_combined_files():
-    now = pd.Timestamp.utcnow()
-    for lookback in range(2):
-        start = now - pd.Timedelta(hours=lookback)
-        prefix = config.S3_PREFIX + start.strftime("/%Y/%j/%H/")
-        logger.debug("Prefix is %s", prefix)
-        for key in utils.get_s3_keys(config.S3_BUCKET, prefix):
-            save_path = custom_multichannel_generation.make_out_path(
-                key, config.MULTI_DIR
+    start = pd.Timestamp.utcnow().floor('1d') - pd.Timedelta('1d')
+    prefix = config.S3_PREFIX + start.strftime("/%Y/%j/%H/")
+    logger.debug("Prefix is %s", prefix)
+    for key in utils.get_s3_keys(config.S3_BUCKET, prefix):
+        save_path = custom_multichannel_generation.make_out_path(
+            key, config.MULTI_DIR
+        )
+        logger.debug("S3 key is %s and save path is %s", key, save_path)
+        if not save_path.exists():
+            logger.info(
+                "Archive is missing file %s, making job to retrieve", save_path
             )
-            logger.debug("S3 key is %s and save path is %s", key, save_path)
-            if not save_path.exists():
-                logger.info(
-                    "Archive is missing file %s, making job to retrieve", save_path
-                )
-                generate_combined_file.send(key, config.S3_BUCKET, False)
+            generate_combined_file.send(key, config.S3_BUCKET, False)
 
 
 @dramatiq.actor(priority=LOW, periodic=cron("10 * * * *"))
