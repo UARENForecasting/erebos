@@ -201,7 +201,10 @@ def full_prediction(combined_path, domain=(-115, -103, 30, 38)):
 
 def full_prediction_to_zarr(combined_path, zarr_dir, domain=(-115, -103, 30, 38)):
     with xr.open_dataset(combined_path, engine="h5netcdf") as ds:
-        mean_time = pd.Timestamp(ds.erebos.mean_time)
+        mt = ds.erebos.mean_time
+        if isinstance(mt, np.ndarray):
+            mt = mt.item()
+        mean_time = pd.Timestamp(mt)
         tt = ds.erebos.t.data
     zarrpath = zarr_dir / mean_time.strftime("%Y/%m/%d")
     if zarrpath.exists():
@@ -225,7 +228,10 @@ def full_prediction_to_nc(
     combined_path, nc_dir, domain=(-115, -103, 30, 38), overwrite=False
 ):
     with xr.open_dataset(combined_path, engine="h5netcdf") as ds:
-        mean_time = pd.Timestamp(ds.erebos.mean_time)
+        mt = ds.erebos.mean_time
+        if isinstance(mt, np.ndarray):
+            mt = mt.item()
+        mean_time = pd.Timestamp(mt)
 
     ncpath = nc_dir / mean_time.strftime("%Y/%m/%d/erebos_prediction_%Y%m%dT%H%M%SZ.nc")
     if ncpath.exists() and not overwrite:
