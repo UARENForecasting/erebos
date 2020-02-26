@@ -7,6 +7,7 @@ import signal
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
+from dramatiq.middleware import CurrentMessage, Retries
 from dramatiq_dashboard import DashboardApp
 import pandas as pd
 from periodiq import PeriodiqMiddleware, cron
@@ -38,9 +39,24 @@ class RestartMiddleware(dramatiq.Middleware):
             os.kill(os.getppid(), signal.SIGHUP)
 
 
+class RetryException(Exception):
+    pass
+
+
+class RetryWOException(Retries):
+    def after_process_message(self, broker, message, *, result=None, exception=None):
+        if hasattr(message, "retry") and message.retry and exception is None:
+            exception = RetryException()
+        super().after_process_message(
+            broker, message, result=result, exception=exception
+        )
+
+
 redis_broker = RedisBroker(host=config.REDIS_HOST, port=config.REDIS_PORT)
 redis_broker.add_middleware(RestartMiddleware(config.MEM_LIMIT))
 redis_broker.add_middleware(PeriodiqMiddleware(skip_delay=30))
+redis_broker.add_middleware(CurrentMessage())
+redis_broker.add_middleware(RetryWOException())
 dramatiq.set_broker(redis_broker)
 dashboard_app = DashboardApp(broker=redis_broker, prefix=config.DASHBOARD_PATH)
 
@@ -65,7 +81,8 @@ def generate_combined_file(key, bucket, async_process=True):
             process_combined_file(final_path)
     else:
         logger.warning("Rescheduling processing of %s", key)
-        generate_combined_file.send_with_options(args=(key,), delay=30_000)
+        msg = CurrentMessage.get_current_message()
+        msg.retry = True
 
 
 @dramatiq.actor(priority=LOW, periodic=cron("* * * * *"))
