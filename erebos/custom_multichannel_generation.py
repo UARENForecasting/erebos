@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import datetime as dt
 import json
 import logging
@@ -58,7 +58,8 @@ def download_files(mcmip_file, bucket, tmpdir):
             path = tmpdir / f"{chan}.nc"
             futs.append(exc.submit(_download, bucket, key, path))
             out[chan] = path
-        wait(futs)
+        for f in as_completed(futs):
+            f.result(timeout=5)
     logger.info("Done downloading")
     return out
 
