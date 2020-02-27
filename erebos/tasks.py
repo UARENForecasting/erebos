@@ -52,7 +52,8 @@ class RetryWOException(Retries):
         )
 
 
-redis_broker = RedisBroker(host=config.REDIS_HOST, port=config.REDIS_PORT)
+redis_broker = RedisBroker(host=config.REDIS_HOST, port=config.REDIS_PORT,
+                           heartbeat_timeout=10 * 60_000)
 redis_broker.add_middleware(RestartMiddleware(config.MEM_LIMIT))
 redis_broker.add_middleware(PeriodiqMiddleware(skip_delay=30))
 redis_broker.add_middleware(CurrentMessage())
