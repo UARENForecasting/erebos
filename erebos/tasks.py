@@ -52,8 +52,9 @@ class RetryWOException(Retries):
         )
 
 
-redis_broker = RedisBroker(host=config.REDIS_HOST, port=config.REDIS_PORT,
-                           heartbeat_timeout=10 * 60_000)
+redis_broker = RedisBroker(
+    host=config.REDIS_HOST, port=config.REDIS_PORT, heartbeat_timeout=10 * 60_000
+)
 redis_broker.add_middleware(RestartMiddleware(config.MEM_LIMIT))
 redis_broker.add_middleware(PeriodiqMiddleware(skip_delay=30))
 redis_broker.add_middleware(CurrentMessage())
@@ -100,14 +101,21 @@ def periodically_generate_combined_files():
 @dramatiq.actor(priority=LOW, periodic=cron("15 0 * * *"))
 def find_missing_combined_files():
     start = pd.Timestamp.utcnow().floor("1d") - pd.Timedelta("1d")
-    prefix = config.S3_PREFIX + start.strftime("/%Y/%j/%H/")
-    logger.debug("Prefix is %s", prefix)
-    for key in utils.get_s3_keys(config.S3_BUCKET, prefix):
-        save_path = custom_multichannel_generation.make_out_path(key, config.MULTI_DIR)
-        logger.debug("S3 key is %s and save path is %s", key, save_path)
-        if not save_path.exists():
-            logger.info("Archive is missing file %s, making job to retrieve", save_path)
-            generate_combined_file.send(key, config.S3_BUCKET, False)
+    for h in range(24):
+        prefix = config.S3_PREFIX + (start + pd.Timedelta(f"{h}h")).strftime(
+            "/%Y/%j/%H/"
+        )
+        logger.debug("Prefix is %s", prefix)
+        for key in utils.get_s3_keys(config.S3_BUCKET, prefix):
+            save_path = custom_multichannel_generation.make_out_path(
+                key, config.MULTI_DIR
+            )
+            logger.debug("S3 key is %s and save path is %s", key, save_path)
+            if not save_path.exists():
+                logger.info(
+                    "Archive is missing file %s, making job to retrieve", save_path
+                )
+                generate_combined_file.send(key, config.S3_BUCKET, False)
 
 
 @dramatiq.actor(priority=LOW, periodic=cron("10 * * * *"))
