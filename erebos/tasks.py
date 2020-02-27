@@ -101,21 +101,13 @@ def periodically_generate_combined_files():
 @dramatiq.actor(priority=LOW, periodic=cron("15 0 * * *"))
 def find_missing_combined_files():
     start = pd.Timestamp.utcnow().floor("1d") - pd.Timedelta("1d")
-    for h in range(24):
-        prefix = config.S3_PREFIX + (start + pd.Timedelta(f"{h}h")).strftime(
-            "/%Y/%j/%H/"
+    for key in custom_multichannel_generation.loop_nonexistent_keys(
+        start, config.S3_PREFIX, config.S3_BUCKET, config.MULTI_DIR
+    ):
+        logger.info(
+            "Archive is missing file for %s, making job to retrieve", key
         )
-        logger.debug("Prefix is %s", prefix)
-        for key in utils.get_s3_keys(config.S3_BUCKET, prefix):
-            save_path = custom_multichannel_generation.make_out_path(
-                key, config.MULTI_DIR
-            )
-            logger.debug("S3 key is %s and save path is %s", key, save_path)
-            if not save_path.exists():
-                logger.info(
-                    "Archive is missing file %s, making job to retrieve", save_path
-                )
-                generate_combined_file.send(key, config.S3_BUCKET, False)
+        generate_combined_file.send(key, config.S3_BUCKET, False)
 
 
 @dramatiq.actor(priority=LOW, periodic=cron("10 * * * *"))

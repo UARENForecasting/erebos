@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, wait
+import datetime as dt
 import json
 import logging
 from pathlib import Path
@@ -13,7 +14,7 @@ from scipy.ndimage import zoom
 import xarray as xr
 
 
-from erebos import __version__
+from erebos import __version__, utils
 from erebos.adapters.goes import GOESFilename
 
 
@@ -261,3 +262,29 @@ def get_process_and_save(
             continue
         if callback is not None:
             callback(str(final_path))
+
+
+def loop_nonexistent_keys(date, s3_prefix, s3_bucket, out_dir):
+    for h in range(24):
+        prefix = s3_prefix + (date + dt.timedelta(hours=h)).strftime("/%Y/%j/%H/")
+        logger.debug("Prefix is %s", prefix)
+        for key in utils.get_s3_keys(s3_bucket, prefix):
+            save_path = make_out_path(key, out_dir)
+            logger.debug("S3 key is %s and save path is %s", key, save_path)
+            if not save_path.exists():
+                yield key
+
+
+def process_files_on_day(
+    date,
+    out_dir,
+    overwrite,
+    s3_prefix="ABI-L2-MCMIPC",
+    s3_bucket="noaa-goes16",
+    callback=None,
+):
+    for key in loop_nonexistent_keys(date, s3_prefix, s3_bucket, out_dir):
+        logger.info("Generating file based on %s", key)
+        final_path = generate_combined_file(key, out_dir, s3_bucket, overwrite=False)
+        if final_path is not None and callback is not None:
+            callback(final_path)
