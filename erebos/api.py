@@ -78,6 +78,7 @@ def get_series(
     precipitable_water: float = 1.0,
     aod700: float = 0.05,
 ):
+    # aod, pw based on 2019 at Tucson aeronet (not monsoon)
     zds = _open_zds(run_date)
     variables = ["ghi", "cloud_mask"]
     for variable in variables:
