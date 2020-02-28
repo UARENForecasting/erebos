@@ -93,7 +93,9 @@ def get_series(
         solpos["elevation"], aod700=aod700, precipitable_water=precipitable_water
     )
     ser = df["ghi"] * df["cloud_mask"] + clr["ghi"] * (1 - df["cloud_mask"])
-    return _process_ser(ser, variable, run_date, lat, lon)
+    # clip to up to 15% over solis clearsky
+    ser = ser.clip(upper=clr["ghi"] * 1.15)
+    return _process_ser(ser, "clearsky_adjusted_ghi", run_date, lat, lon)
 
 
 @subapi.get("/series/{variable}", response_model=SeriesResponse)
