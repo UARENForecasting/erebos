@@ -9,6 +9,7 @@ from typing import Optional, Union, Dict
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 import pandas as pd
 import psutil
+from pvlib import clearsky, solarposition
 from pydantic import BaseModel, FilePath, Json
 from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 from starlette.requests import Request
@@ -56,14 +57,8 @@ def _open_zds(run_date: dt.date):
     return zds
 
 
-@subapi.get("/series/{variable}", response_model=SeriesResponse)
-def get_series(variable: str, run_date: dt.date, lon: float, lat: float):
-    zds = _open_zds(run_date)
-    if variable not in zds:
-        raise HTTPException(status_code=404, detail=f"No variable {variable} in file")
-    data = zds.erebos.select_nearest(lon, lat)[variable].isel(z=0).load()
-    ser = data.to_dataframe()[variable].tz_localize("UTC").sort_index()
-    ser = ser.round(decimals=1).fillna(-999)
+def _process_ser(ser, variable, run_date, lat, lon):
+    ser = ser.tz_localize("UTC").sort_index().round(decimals=1).fillna(-999)
     ser = ser[~ser.index.duplicated()]
     out = {
         "variable": variable,
@@ -73,6 +68,42 @@ def get_series(variable: str, run_date: dt.date, lon: float, lat: float):
         "results": ser,
     }
     return out
+
+
+@subapi.get("/series/adjghi", response_model=SeriesResponse)
+def get_series(
+    run_date: dt.date,
+    lon: float,
+    lat: float,
+    precipitable_water: float = 1.0,
+    aod700: float = 0.05,
+):
+    # aod, pw based on 2019 at Tucson aeronet (not monsoon)
+    zds = _open_zds(run_date)
+    variables = ["ghi", "cloud_mask"]
+    for variable in variables:
+        if variable not in zds:
+            raise HTTPException(
+                status_code=404, detail=f"No variable {variable} in file"
+            )
+    data = zds.erebos.select_nearest(lon, lat)[variables].isel(z=0).load()
+    df = data.to_dataframe()[variables]
+    solpos = solarposition.get_solarposition(df.index, lat, lon)
+    clr = clearsky.simplified_solis(
+        solpos["elevation"], aod700=aod700, precipitable_water=precipitable_water
+    )
+    ser = df["ghi"] * df["cloud_mask"] + clr["ghi"] * (1 - df["cloud_mask"])
+    return _process_ser(ser, variable, run_date, lat, lon)
+
+
+@subapi.get("/series/{variable}", response_model=SeriesResponse)
+def get_series(variable: str, run_date: dt.date, lon: float, lat: float):
+    zds = _open_zds(run_date)
+    if variable not in zds:
+        raise HTTPException(status_code=404, detail=f"No variable {variable} in file")
+    data = zds.erebos.select_nearest(lon, lat)[variable].isel(z=0).load()
+    ser = data.to_dataframe()[variable]
+    return _process_ser(ser, variable, run_date, lat, lon)
 
 
 @subapi.get("/lastupdate")
