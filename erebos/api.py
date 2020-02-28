@@ -75,7 +75,7 @@ def get_series(
     run_date: dt.date,
     lon: float,
     lat: float,
-    precipitable_water: float = 0.1,
+    precipitable_water: float = 1.0,
     aod700: float = 0.05,
 ):
     zds = _open_zds(run_date)
