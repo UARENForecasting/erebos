@@ -125,8 +125,8 @@ def add_primary_variables(ds, other, base_chan):
     For channels that have a lower resolution, copy the value to mulitple cells.
     """
     cband = f"C{other.band_id.item():02d}"
-    nvar = other.CMI
-    ndqf = other.DQF
+    nvar = other.CMI.load()
+    ndqf = other.DQF.load()
     comp_params = {
         k: getattr(ds, f"CMI_C{base_chan:02d}").encoding[k]
         for k in ("chunksizes", "shuffle", "zlib", "complevel", "fletcher32")
