@@ -76,7 +76,7 @@ jobs:
       - task: test
         image: img
         input_mapping:
-          fxapi-repo: pull-request
+          repo: pull-request
         file: pull-request/ci/test.yml
         on_failure:
           put: pull-request
