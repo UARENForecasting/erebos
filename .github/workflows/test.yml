@@ -1,9 +1,10 @@
 name: CI
 on: [pull_request,push]
 jobs:
-  runs-on: ubuntu-latest
-  container: quay.io/uapowerforecasting/erebos:latest
-  steps:
+  build:
+    runs-on: ubuntu-latest
+    container: quay.io/uapowerforecasting/erebos:latest
+    steps:
     - name: Checkout
       uses: actions/checkout@v2
     - name: Install dependencies
