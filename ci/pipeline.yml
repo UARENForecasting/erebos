@@ -1,0 +1,146 @@
+---
+resource_types:
+  - name: pull-request
+    type: registry-image
+    source:
+      repository: teliaoss/github-pr-resource
+
+resources:
+  - name: repo
+    type: git
+    check_every: 5m
+    webhook_token: ((webhook-token))
+    source:
+      uri: https://github.com/uarenforecasting/erebos.git
+      branch: master
+
+  - name: pull-request
+    type: pull-request
+    check_every: 5m
+    webhook_token: ((webhook-token))
+    source:
+      repository: uarenforecasting/erebos
+      access_token: ((renserver-access-token))
+
+  - name: img
+    type: registry-image
+    source:
+      repository: registry.x.energy.arizona.edu:5000/erebos
+      tag: latest
+      username: ((registry-username))
+      password: ((registry-password))
+
+jobs:
+  - name: build-img
+    plan:
+      - get: repo
+        trigger: true
+      - task: build
+        privileged: true
+        config:
+          platform: linux
+          image_resource:
+            type: registry-image
+            source:
+              repository: vito/oci-build-task
+          params:
+            CONTEXT: repo
+          caches:
+            - path: cache
+          inputs:
+            - name: repo
+          outputs:
+            - name: image
+          run:
+            path: build
+      - put: img
+        params:
+          image: image/image.tar
+
+  - name: test-pr
+    plan:
+      - get: pull-request
+        trigger: true
+        version: every
+        params:
+          git_depth: 1
+          integration_tool: rebase
+      - try:
+          put: update-status
+          resource: pull-request
+          params:
+            path: pull-request
+            status: pending
+          get_params: {skip_download: true}
+      - get: img
+      - task: test
+        image: img
+        input_mapping:
+          fxapi-repo: pull-request
+        file: pull-request/ci/test.yml
+        on_failure:
+          put: pull-request
+          params:
+            path: pull-request
+            status: failure
+          get_params:
+            skip_download: true
+        on_error:
+          put: pull-request
+          params:
+            path: pull-request
+            status: error
+          get_params:
+            skip_download: true
+        on_success:
+          put: update-status
+          resource: pull-request
+          params:
+            path: pull-request
+            status: success
+          get_params:
+            skip_download: true
+      - try:
+          task: cov-html
+          config:
+            platform: linux
+            image_resource:
+              type: registry-image
+              source:
+                repository: busybox
+            inputs:
+              - name: coverage
+            run:
+              path: sh
+              args:
+                - -exc
+                - |
+                  exit $(cat coverage/result)
+          on_failure:
+            put: pull-request
+            params:
+              path: pull-request
+              context: coverage
+              comment_file: coverage/report.txt
+              delete_previous_comments: true
+              status: failure
+            get_params:
+              skip_download: true
+          on_error:
+            put: pull-request
+            params:
+              path: pull-request
+              context: coverage
+              status: error
+            get_params:
+              skip_download: true
+          on_success:
+            put: pull-request
+            params:
+              path: pull-request
+              context: coverage
+              comment_file: coverage/report.txt
+              delete_previous_comments: true
+              status: success
+            get_params:
+              skip_download: true

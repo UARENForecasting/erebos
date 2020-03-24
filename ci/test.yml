@@ -1,0 +1,45 @@
+---
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: registry.x.energy.arizona.edu:5000/erebos
+    tag: latest
+    username: ((registry-username))
+    password: ((registry-password))
+
+inputs:
+  - name: repo
+
+outputs:
+  - name: coverage
+
+run:
+  path: sh
+  user: root  # annoying but required to write output see concourse pr #403
+  args:
+    - -exc
+    - |
+      pip install -r repo/requirements.txt
+      pip install -r repo/testing-requirements.txt
+
+      chmod a+rwx repo
+      cd repo
+      su user -c "pytest --cov=erebos erebos"
+      flake8 erebos
+
+      coverage json -o coverage.json
+      echo '```' > ../coverage/report.txt
+      coverage report -m >> ../coverage/report.txt
+      echo '```' >> ../coverage/report.txt
+
+      python -c "
+      import json
+      with open('coverage.json', 'r') as f:
+          cov = json.load(f)
+      total_coverage = cov['totals']['percent_covered']
+      result = str(int(total_coverage < 95))
+      with open('../coverage/result', 'w') as f:
+          f.write(result)
+      "
