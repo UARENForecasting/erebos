@@ -64,7 +64,7 @@ jobs:
         version: every
         params:
           git_depth: 1
-          integration_tool: rebase
+          integration_tool: checkout
       - try:
           put: update-status
           resource: pull-request
