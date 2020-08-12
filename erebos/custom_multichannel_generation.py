@@ -222,6 +222,15 @@ def _update_visibility(message, timeout, local):
         time.sleep(timeout / 2)
 
 
+def _process_s3_notification(msg, s3_prefix, data):
+    rec = json.loads(msg["Message"])
+    for record in rec["Records"]:
+        bucket = record["s3"]["bucket"]["name"]
+        key = record["s3"]["object"]["key"]
+        if key.startswith(s3_prefix):
+            yield (bucket, key, data)
+
+
 def get_sqs_keys(sqs_url, s3_prefix):
     sqs = boto3.resource("sqs")
     q = sqs.Queue(sqs_url)
@@ -236,12 +245,14 @@ def get_sqs_keys(sqs_url, s3_prefix):
                 data.stop = False
                 fut = exc.submit(_update_visibility, message, 30, data)
                 sns_msg = json.loads(message.body)
-                rec = json.loads(sns_msg["Message"])
-                for record in rec["Records"]:
-                    bucket = record["s3"]["bucket"]["name"]
-                    key = record["s3"]["object"]["key"]
-                    if key.startswith(s3_prefix):
-                        yield (bucket, key, data)
+                if "Message" not in sns_msg:
+                    for rec in sns_msg["Records"]:
+                        msg = rec['Sns']
+                        for out in _process_s3_notification(msg, s3_prefix, data):
+                            yield out
+                else:
+                    for out in _process_s3_notification(sns_msg, s3_prefix, data):
+                        yield out
                 data.stop = True
                 logger.debug("stopping message visibility update")
                 fut.cancel()
