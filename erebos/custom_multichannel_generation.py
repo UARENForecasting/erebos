@@ -70,6 +70,8 @@ def prep_first_file(ds, chan):
     rename the main variables
     """
     drop_vars = (
+        "channel_gain_field",
+        "channel_integration_time",
         "nominal_satellite_subpoint_lat",
         "nominal_satellite_subpoint_lon",
         "nominal_satellite_height",
@@ -247,7 +249,7 @@ def get_sqs_keys(sqs_url, s3_prefix):
                 sns_msg = json.loads(message.body)
                 if "Message" not in sns_msg:
                     for rec in sns_msg["Records"]:
-                        msg = rec['Sns']
+                        msg = rec["Sns"]
                         for out in _process_s3_notification(msg, s3_prefix, data):
                             yield out
                 else:
