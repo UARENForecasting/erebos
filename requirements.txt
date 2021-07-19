@@ -14,7 +14,7 @@ scikit-learn==0.22.1
 lightgbm==2.3.0
 onnxruntime==1.1.1
 zarr==2.4.0
-fastapi==0.49.0
+fastapi==0.65.2
 uvicorn==0.11.7
 gunicorn==20.0.4
 dask==2.11.0
@@ -26,7 +26,7 @@ prometheus-client==0.7.1
 psutil==5.7.0
 sentry-dramatiq==0.3.1
 dramatiq-dashboard==0.2.2
-jinja2==2.11.1
+jinja2==2.11.3
 periodiq==0.12.1
 starlette-prometheus==0.5.0
 mlflow==1.7.2
