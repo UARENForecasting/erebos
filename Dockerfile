@@ -14,7 +14,8 @@ RUN apt update \
 
 COPY . build/.
 
-RUN pip install --no-cache-dir -r build/requirements.txt \
+RUN pip install --no-cache-dir 'numpy==1.18.1' \
+    && pip install --no-cache-dir -r build/requirements.txt \
     && pip install build/. \
     && rm -rf build \
     && chown -R 1001:0 /opt/app-root
