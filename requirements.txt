@@ -6,7 +6,7 @@ h5netcdf==0.7.4
 pandas==1.0.1
 pvlib==0.7.1
 pytz>=2019.3
-numpy==1.18.1
+numpy==1.22.0
 sentry_sdk==0.14.1
 scipy==1.4.1
 xarray==0.15.0
